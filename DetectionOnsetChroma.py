@@ -24,7 +24,7 @@ norm_spectre = params.norm_spectre
 
 title = 'Palestrina'
 #Palestrina, Cadence4VMaj
-y, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/code/DescripteursHarmoniquesAudio/'+title+'.wav')
+y, sr = librosa.load('/Users/manuel/Github/DescripteursHarmoniquesAudio/'+title+'.wav')
 Notemin = 'D3'
 Notemax = 'D9'
 
@@ -114,7 +114,6 @@ def detectionOnsets(y):
         plt.show()
 
     return onset_times
-
 
 
 

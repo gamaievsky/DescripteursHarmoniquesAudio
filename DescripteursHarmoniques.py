@@ -23,28 +23,34 @@ plot_onsets = params.plot_onsets
 norm_spectre = params.norm_spectre
 
 class SignalSepare:
-    """ SoS """
+    """ Prend en entrée en signal et le signal des pistes audio séparées. """
 
-    def __init__(self, signal, pistes, Notemin  = 'D3', Notemax = 'D9'):
+    def __init__(self, signal, pistes, sr, Notemin  = 'D3', Notemax = 'D9'):
         self.signal = signal
         self.pistes = pistes
+        self.sr = sr
         self.n_notes = len(liste_audio)
         self.Notemin = Notemin
         self.Notemax = Notemax
+        self.Nf = 0
+        self.fmin = 0
+        self.fmax = 0
+        self.n_bins = 0
         self.onset_times = []
         self.chromSync = []
+        self.chromPistes = []
         self.chromPistesSync = []
-        
+
         self.consonance = []
 
     def detectionOnsets(self):
-        fmin = librosa.note_to_hz(Notemin)
-        fmax = librosa.note_to_hz(Notemax)
+        self.fmin = librosa.note_to_hz(self.Notemin)
+        self.fmax = librosa.note_to_hz(self.Notemax)
         #Nmin = int((sr/(fmax*(2**(1/BINS_PER_OCTAVE)-1))))
         #Nmax = int((sr/(fmin*(2**(1/BINS_PER_OCTAVE)-1))))
-        n_bins = int((librosa.note_to_midi(Notemax) - librosa.note_to_midi(Notemin))*BINS_PER_OCTAVE/12)
-        Chrom = librosa.amplitude_to_db(np.abs(librosa.cqt(y=y, sr=sr, hop_length = STEP, fmin= fmin, bins_per_octave=BINS_PER_OCTAVE, n_bins=n_bins)), ref=np.max)
-        Nf = len(Chrom)
+        self.n_bins = int((librosa.note_to_midi(self.Notemax) - librosa.note_to_midi(self.Notemin))*BINS_PER_OCTAVE/12)
+        Chrom = librosa.amplitude_to_db(np.abs(librosa.cqt(y=self.y, sr=self.sr, hop_length = STEP, fmin= fmin, bins_per_octave=BINS_PER_OCTAVE, n_bins=self.n_bins)), ref=np.max)
+        self.Nf = len(Chrom)
         N = len(Chrom[0])
         Diff = np.zeros((Nf,N))
         Dev = np.zeros(N)
@@ -83,29 +89,28 @@ class SignalSepare:
 
 
         onset_frames = librosa.util.fix_frames(Onsets, x_min=0, x_max=Chrom.shape[1]-1)
-        onset_times = librosa.frames_to_time(onset_frames, sr=sr, hop_length = STEP)
+        self.onset_times = librosa.frames_to_time(onset_frames, sr=sr, hop_length = STEP)
+
 
         #Synchronisation sur les onsets, en enlevant le début et la fin des longues frames
-        ChromSync = np.zeros((Nf,len(onset_frames)-1))
-        n_att = int(librosa.time_to_frames(T_att, sr=sr, hop_length = STEP))
+        self.chromSync = np.zeros((Nf,len(onset_frames)-1))
+        n_att = int(librosa.time_to_frames(T_att, sr=self.sr, hop_length = STEP))
         for j in range(len(onset_frames)-1):
             for i in range(Nf):
-                ChromSync[i,j] = np.mean(Chrom[i][(onset_frames[j]+n_att):(onset_frames[j+1]-n_att)])
+                self.chromSync[i,j] = np.mean(Chrom[i][(onset_frames[j]+n_att):(onset_frames[j+1]-n_att)])
 
         #Normalisation du spectre
     #    ChromSync[:,1] = librosa.power_to_db(librosa.db_to_power(ChromSync[:,1]) / np.sum(librosa.db_to_power(ChromSync[:,1])))
         if norm_spectre:
             for j in range(ChromSync.shape[1]):
-                ChromSync[:,j] = librosa.power_to_db(librosa.db_to_power(ChromSync[:,j]) / np.sum(librosa.db_to_power(ChromSync[:,j])))
-
-
+                self.chromSync[:,j] = librosa.power_to_db(librosa.db_to_power(self.chromSync[:,j]) / np.sum(librosa.db_to_power(self.chromSync[:,j])))
 
 
         #Affichage
         if plot_onsets:
             plt.figure(figsize=(13, 7))
             ax1 = plt.subplot(3, 1, 1)
-            librosa.display.specshow(Chrom, bins_per_octave=BINS_PER_OCTAVE, fmin=fmin, y_axis='cqt_note', x_axis='time', x_coords=times)
+            librosa.display.specshow(Chrom, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=times)
             plt.title('CQT spectrogram')
 
             plt.subplot(3, 1, 2, sharex=ax1)
@@ -116,10 +121,28 @@ class SignalSepare:
             plt.legend(frameon=True, framealpha=0.75)
 
             ax1 = plt.subplot(3, 1, 3, sharex=ax1)
-            librosa.display.specshow(ChromSync, bins_per_octave=BINS_PER_OCTAVE, fmin=fmin, y_axis='cqt_note', x_axis='time',x_coords=onset_times)
+            librosa.display.specshow(self.chromSync, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times)
             plt.show()
 
-        return onset_times
+
+    def clustering(self):
+        """ Découpe et synchronise les pistes séparées sur les ONSET, stoque le spectrogramme
+        synchronisé dans self.chromPistesSync"""
+        ChromPistes = []
+
+        for k, voice in enumerate(pistes):
+            ChromPistes.append(librosa.amplitude_to_db(np.abs(librosa.cqt(y=self.pistes[k], sr=self.sr, hop_length = STEP, fmin= self.fmin, bins_per_octave=BINS_PER_OCTAVE, n_bins=self.n_bins)), ref=np.max))
+            self.chromPistesSync.append(np)
+            n_att = int(librosa.time_to_frames(T_att, sr=sr, hop_length = STEP))
+            for j in range(len(self.onset_times)-1):
+                for i in range(self.Nf):
+                    self.chromPistesSync[i,j] = np.mean(ChromPistes[k][i][(onset_frames[j]+n_att):(onset_frames[j+1]-n_att)])
+            self.chromPistesSync.append
+
+
+
+
+
 
 
 
@@ -132,7 +155,7 @@ class SignalSepare:
 
 title = 'Palestrina'
 #Palestrina, Cadence4VMaj
-y, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/code/DescripteursHarmoniquesAudio/'+title+'.wav')
+y, sr = librosa.load('/Users/manuel/Github/DescripteursHarmoniquesAudio/'+title+'.wav')
 Notemin = 'D3'
 Notemax = 'D9'
 
@@ -140,8 +163,6 @@ Notemax = 'D9'
 
 
 
-
-def clustering(y, onset_times):
 
 
 
