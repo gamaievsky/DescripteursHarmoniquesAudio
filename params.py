@@ -20,13 +20,16 @@ H =  30
 
 #Filtre sur les onsets
 T = 0.25 #(en secondes)
-T_att = 0
+T_att = 0.1
 
 #Tri des fréquences qui entrent en compte dans le calcul de  la déviation
 triFreq = True
 
 #Plot Onsets
-plot_onsets = True
+plot_onsets = False
 
-#Normalisation
+#Normalisation dans DetectionOnsetChroma
 norm_spectre = False
+
+#Plot Onsets pistes
+plot_pistes = False
