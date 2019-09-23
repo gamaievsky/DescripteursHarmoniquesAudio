@@ -25,11 +25,24 @@ T_att = 0.1
 #Tri des fréquences qui entrent en compte dans le calcul de  la déviation
 triFreq = True
 
-#Plot Onsets
-plot_onsets = False
-
 #Normalisation dans DetectionOnsetChroma
 norm_spectre = False
+norm_conc = True
+norm_concTot = True
 
-#Plot Onsets pistes
+#PLOT
+plot_onsets = False
 plot_pistes = False
+plot_chromDescr = False
+plot_descr = True
+
+#PARAMETRES DES DESCRIPTEURS
+#Dissonance
+S0 = 0.24
+S1 = 0.021
+S2 = 19
+B1 = 3.5
+B2 = 5.75
+
+#Tension:
+DELTA = 0.6

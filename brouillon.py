@@ -1,35 +1,73 @@
-from __future__ import print_function
+from __future__ import print_function, division
 import numpy as np
 import matplotlib.pyplot as plt
+from operator import truediv
+
+l = [9,2,1,4,5,6]
+l.sort()
+print(l)
+
+
+x = np.arange(-2,2,0.01)
+a = 0.6
+y = np.exp(-(x/a)**2)
+
+plt.figure()
+plt.plot(x,y)
+plt.show()
+
+
+
+
+
 
 import librosa
 import librosa.display
+
+
+
+
+
+
+
+l.remove(4)
+
+print(l)
+
+
+
+
+
+print(max(l))
+
+
+
+for i in range(3):
+    res = np.zeros((1,3))
+    A = np.zeros((1,3))
+    for j in range(3):
+        A[0,j] = i
+    print(A[0,i])
+
+for k in range(3):
+    print(res[0,k])
 
 
 title = 'Palestrina'
 #Palestrina, Cadence4VMaj
 y, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/code/DescripteursHarmoniquesAudio/'+title+'.wav', duration = 6)
 
-# array([ 0.07 ,  0.395,  0.511,  0.627,  0.766,  0.975,
-# 1.207,  1.324,  1.44 ,  1.788,  1.881])
+"""
+    def Tension(self):
+        self.tension = np.zeros(self.n_frames)
+        for p1 in range(self.n_pistes-2):
+            for p2 in range(a+1, self.n_pistes-1):
+                for p3 in range(b+1, self.n_pistes):
+                    for f1 in range(self.Nf):
+                        for f2 in range(self.Nf):
+                            for f3 in range(self.Nf):
 
-# Or use a pre-computed onset enveloppe
+                                self.tension = self.tension + (self.chromPistesSync[p1][i1,:] * self.chromPistesSync[p2][i2,:] * self.chromPistesSync[p3][i3,:]) * np.abs()
 
-o_env = librosa.onset.onset_strength(y, sr=sr)
-times = librosa.frames_to_time(np.arange(len(o_env)), sr=sr)
-onset_frames = librosa.onset.onset_detect(onset_envelope=o_env, sr=sr)
 
-import matplotlib.pyplot as plt
-D = np.abs(librosa.stft(y))
-plt.figure()
-ax1 = plt.subplot(2, 1, 1)
-librosa.display.specshow(librosa.amplitude_to_db(D, ref=np.max),
-                         x_axis='time', y_axis='log')
-plt.title('Power spectrogram')
-plt.subplot(2, 1, 2, sharex=ax1)
-plt.plot(times, o_env, label='Onset strength')
-plt.vlines(times[onset_frames], 0, o_env.max(), color='r', alpha=0.9,
-           linestyle='--', label='Onsets')
-plt.axis('tight')
-plt.legend(frameon=True, framealpha=0.75)
-plt.show()
+"""
