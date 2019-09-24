@@ -5,8 +5,9 @@ from operator import truediv
 
 l = [9,2,1,4,5,6]
 l.sort()
-print(l)
-
+for e in range(2,5):
+    print(e)
+print(3/8)
 
 x = np.arange(-2,2,0.01)
 a = 0.6
@@ -16,7 +17,7 @@ plt.figure()
 plt.plot(x,y)
 plt.show()
 
-
+print(512/22050)
 
 
 

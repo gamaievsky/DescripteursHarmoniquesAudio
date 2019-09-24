@@ -6,35 +6,47 @@ duration = None #60*2 # duration of the analysed signal (in seconds) ou None.
 begin_ref = 0.0 #beginning of the reference signal for computing cosine distance between clusters (in seconds).
 end_ref = 0.05 #end of the reference signal for computing cosine distance between clusters (in seconds).
 
-## DETECTION ONSETS
+
 BINS_PER_OCTAVE = 12*2
 N_OCTAVES = 7
 NFFT = 2 ** 11 #(> 2**10) duration of analysis window in samples for feature extraction only.
 STEP = NFFT / 2 #(>2**6) et (STEP < NFFT) 50% overlap between time windows / also sub-frequency after analyzing spectral structure.
-WINDOW = np.hamming
+WINDOW = np.hanning
 
+## DETECTION ONSETS
+
+SemiManual = True
 #Paramètres  de la fonction de seuil pour la détection d'onset_strength
-ALPHA = 180
-BETA = 1
-H =  30
-
+α = 83
+β = 1
+H =  40
 #Filtre sur les onsets
-T = 0.25 #(en secondes)
+T = 0.3 #(en secondes)
 T_att = 0.1
 
-#Tri des fréquences qui entrent en compte dans le calcul de  la déviation
+#(α,β,H,T,T_att)
+paramsDetOnsets_Palestrina = [172, 1, 30, 0.3, 0.1]
+paramsDetOnsets_PalestrinaM = [105, 1, 30, 0.3, 0.1]
+paramsDetOnsets_SuiteAccords = [83, 1, 40, 0.3, 0.1]
+#Ajustements
+[delOnsets_Palestrina, addOnsets_Palestrina] = [[], []]
+[delOnsets_PalestrinaM, addOnsets_PalestrinaM] = [[6], [4.5]]
+[delOnsets_SuiteAccords, addOnsets_SuiteAccords] = [[2,3,4,6,8,10,11,13],[]]
+
+#Tri des fréquences qui entrent en compte dans le calcul de la déviation
 triFreq = True
 
-#Normalisation dans DetectionOnsetChroma
+
+## NORMALISATIONS
 norm_spectre = False
 norm_conc = True
 norm_concTot = True
 
 #PLOT
-plot_onsets = False
+plot_onsets = True
 plot_pistes = False
 plot_chromDescr = False
-plot_descr = True
+plot_descr = False
 
 #PARAMETRES DES DESCRIPTEURS
 #Dissonance
@@ -45,4 +57,4 @@ B1 = 3.5
 B2 = 5.75
 
 #Tension:
-DELTA = 0.6
+δ = 0.6
