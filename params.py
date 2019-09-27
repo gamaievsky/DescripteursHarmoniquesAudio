@@ -27,11 +27,11 @@ T_att = 0.1
 #(α,β,H,T,T_att)
 paramsDetOnsets_Palestrina = [172, 1, 30, 0.3, 0.1]
 paramsDetOnsets_PalestrinaM = [105, 1, 30, 0.3, 0.1]
-paramsDetOnsets_SuiteAccords = [83, 1, 40, 0.3, 0.1]
-#Ajustements
+paramsDetOnsets_SuiteAccords = [83, 1, 40, 0.3, 0.3]
+#Ajustements = ([frames], [times])
 [delOnsets_Palestrina, addOnsets_Palestrina] = [[], []]
-[delOnsets_PalestrinaM, addOnsets_PalestrinaM] = [[6], [4.5]]
-[delOnsets_SuiteAccords, addOnsets_SuiteAccords] = [[2,3,4,6,8,10,11,13],[]]
+[delOnsets_PalestrinaM, addOnsets_PalestrinaM] = [[6,8,9], [4.5]] #7,8,9 juste pour éviter la division du même accord
+[delOnsets_SuiteAccords, addOnsets_SuiteAccords] = [[2,3,4,6,8,10,11,12],[6.1]]
 
 #Tri des fréquences qui entrent en compte dans le calcul de la déviation
 triFreq = True
@@ -43,10 +43,10 @@ norm_conc = True
 norm_concTot = True
 
 #PLOT
-plot_onsets = True
+plot_onsets = False
 plot_pistes = False
 plot_chromDescr = False
-plot_descr = False
+plot_descr = True
 
 #PARAMETRES DES DESCRIPTEURS
 #Dissonance

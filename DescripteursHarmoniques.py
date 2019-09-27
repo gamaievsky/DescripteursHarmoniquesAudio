@@ -344,11 +344,13 @@ class SignalSepare:
 
 
 title = 'PalestrinaM'
-#Palestrina, PalestrinaM
+#Palestrina, PalestrinaM, SuiteAccords
 y, sr = librosa.load('/Users/manuel/Github/DescripteursHarmoniquesAudio/Exemples/'+title+'.wav')
 y1, sr = librosa.load('/Users/manuel/Github/DescripteursHarmoniquesAudio/Exemples/'+title+'-Basse.wav')
 y2, sr = librosa.load('/Users/manuel/Github/DescripteursHarmoniquesAudio/Exemples/'+title+'-Alto.wav')
 y3, sr = librosa.load('/Users/manuel/Github/DescripteursHarmoniquesAudio/Exemples/'+title+'-Soprano.wav')
+delOnsets = []
+addOnsets = []
 if params.SemiManual:
     delOnsets = getattr(params, 'delOnsets'+'_'+title)
     addOnsets = getattr(params, 'addOnsets'+'_'+title)
@@ -359,11 +361,12 @@ if params.SemiManual:
     T_att = getattr(params, 'paramsDetOnsets'+'_'+title)[4]
 
 
+
 Notemin = 'D3'
 Notemax = 'D9'
 
 S = SignalSepare(y, sr, [y1,y2,y3], Notemin, Notemax, delOnsets, addOnsets)
 S.DetectionOnsets()
 S.Clustering()
-#S.Concordance()
-S.ComputeDescripteurs(space = [])
+S.Concordance()
+S.ComputeDescripteurs(space = ['dissonance', 'dissonanceSignal'])
