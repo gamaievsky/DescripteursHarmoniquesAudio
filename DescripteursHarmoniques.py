@@ -1,6 +1,7 @@
 from __future__ import print_function, division
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 from operator import itemgetter, attrgetter, truediv
 import statistics as stat
 from scipy import signal
@@ -9,11 +10,20 @@ import math
 
 import librosa
 import librosa.display
+import wave
+import sys
+import soundfile as sf
+import os
+import pyaudio
+import threading
+
 
 import params
 
 WINDOW = params.WINDOW
 BINS_PER_OCTAVE = params.BINS_PER_OCTAVE
+BINS_PER_OCTAVE_ONSETS = params.BINS_PER_OCTAVE_ONSETS
+FILTER_SCALE = params.FILTER_SCALE
 STEP = 512
 α = params.α
 β = params.β
@@ -36,6 +46,39 @@ plot_onsets = params.plot_onsets
 plot_pistes = params.plot_pistes
 plot_chromDescr = params.plot_chromDescr
 plot_descr = params.plot_descr
+plot_symb = params.plot_symb
+
+class AudioFile:
+    chunk = 1024
+
+    def __init__(self, file):
+        """ Init audio stream """
+        self.file = file
+        self.wf = wave.open(file, 'rb')
+        self.p = pyaudio.PyAudio()
+        self.stream = self.p.open(
+            format = self.p.get_format_from_width(self.wf.getsampwidth()),
+            channels = self.wf.getnchannels(),
+            rate = self.wf.getframerate(),
+            output = True
+        )
+
+    def __truePlay(self):
+        data = self.wf.readframes(self.chunk)
+        while data != '':
+            self.stream.write(data)
+            data = self.wf.readframes(self.chunk)
+
+    def play(self):
+        """ Play entire file """
+        x = threading.Thread(target=self.__truePlay, args=())
+        x.start()
+
+
+    def close(self):
+        """ Graceful shutdown """
+        self.stream.close()
+        self.p.terminate()
 
 class SignalSepare:
     """ Prend en entrée en signal et le signal des pistes audio séparées. """
@@ -49,6 +92,7 @@ class SignalSepare:
         self.Notemax = Notemax
         self.delOnsets = delOnsets
         self.addOnsets = addOnsets
+        self.n_bins_ONSETS = 0
         self.n_bins = 0
         self.N = 0
         self.fmin = 0
@@ -59,8 +103,7 @@ class SignalSepare:
         self.times = []
         self.onset_times = []
         self.onset_frames = []
-        self.Chrom = []
-        self.ChromDB = []
+        self.ChromDB_ONSETS = []
         self.chromSync = []
         self.chromSyncDB = []
         self.chromPistesSync = []
@@ -79,15 +122,14 @@ class SignalSepare:
         self.fmax = librosa.note_to_hz(self.Notemax)
         #Nmin = int((sr/(fmax*(2**(1/BINS_PER_OCTAVE)-1))))
         #Nmax = int((sr/(fmin*(2**(1/BINS_PER_OCTAVE)-1))))
-        self.n_bins = int((librosa.note_to_midi(self.Notemax) - librosa.note_to_midi(self.Notemin))*BINS_PER_OCTAVE/12)
-        self.Chrom = np.abs(librosa.cqt(y=self.y, sr=self.sr, hop_length = STEP, fmin= self.fmin, bins_per_octave=BINS_PER_OCTAVE, n_bins=self.n_bins, window=WINDOW))
-        self.ChromDB = librosa.amplitude_to_db(self.Chrom, ref=np.max)
-        self.N = len(self.Chrom[0])
-        Diff = np.zeros((self.n_bins,self.N))
+        self.n_bins_ONSETS = int((librosa.note_to_midi(self.Notemax) - librosa.note_to_midi(self.Notemin))*BINS_PER_OCTAVE_ONSETS/12)
+        self.ChromDB_ONSETS = librosa.amplitude_to_db(np.abs(librosa.cqt(y=self.y, sr=self.sr, hop_length = STEP, fmin= self.fmin, bins_per_octave=BINS_PER_OCTAVE_ONSETS, n_bins=self.n_bins_ONSETS, window=WINDOW)), ref=np.max)
+        self.N = len(self.ChromDB_ONSETS[0])
+        Diff = np.zeros((self.n_bins_ONSETS,self.N))
         Dev = np.zeros(self.N)
         for j in range(1,self.N):
-            for i in range(self.n_bins):
-                Diff[i,j] = np.abs(self.ChromDB[i,j]-self.ChromDB[i,j-1])
+            for i in range(self.n_bins_ONSETS):
+                Diff[i,j] = np.abs(self.ChromDB_ONSETS[i,j]-self.ChromDB_ONSETS[i,j-1])
                 Dev[j] = sum(Diff[:,j])
 
         # FONCTION DE SEUIL
@@ -125,19 +167,19 @@ class SignalSepare:
         for o in self.delOnsets:
             Onsets.pop(o-1)
 
-        # Ajout manuel des onsets
+         #Ajout manuel des onsets
         for t in self.addOnsets:
             Onsets.append(librosa.time_to_frames(t, sr=sr, hop_length=STEP))
             Onsets.sort()
 
-
-
-
-
-
-        self.onset_frames = librosa.util.fix_frames(Onsets, x_min=0, x_max=self.Chrom.shape[1]-1)
+        self.onset_frames = librosa.util.fix_frames(Onsets, x_min=0, x_max=self.ChromDB_ONSETS.shape[1]-1)
         self.onset_times = librosa.frames_to_time(self.onset_frames, sr=sr, hop_length = STEP)
         self.n_frames = len(self.onset_frames)-1
+
+        # Transformée avec la précision due pour l'analyse
+        self.n_bins = int((librosa.note_to_midi(self.Notemax) - librosa.note_to_midi(self.Notemin))*BINS_PER_OCTAVE/12)
+        self.Chrom = np.abs(librosa.cqt(y=self.y, sr=self.sr, hop_length = STEP, fmin= self.fmin, bins_per_octave=BINS_PER_OCTAVE, n_bins=self.n_bins, window=WINDOW, filter_scale = FILTER_SCALE))
+        self.ChromDB = librosa.amplitude_to_db(self.Chrom, ref=np.max)
 
 
         #Synchronisation sur les onsets, en enlevant le début et la fin des longues frames
@@ -179,6 +221,7 @@ class SignalSepare:
     def Clustering(self):
         """ Découpe et synchronise les pistes séparées sur les ONSET, stoque le spectrogramme
         synchronisé en construisant self.chromPistesSync"""
+        # Construction de Chrom
 
         #  Construction de chromPistesSync
         ChromPistes = []
@@ -340,6 +383,54 @@ class SignalSepare:
                 plt.legend(frameon=True, framealpha=0.75)
             plt.show()
 
+        #Plot des représentations symboliques
+        if plot_symb:
+            # Supprimer le  fichier stereo_file.wav s'il existe
+            if os.path.exists("stereo_file.wav"):
+              os.remove("stereo_file.wav")
+            # Écrire un fichier wav à partir de y et sr
+            sf.write('stereo_file.wav', self.y, self.sr)
+            a = AudioFile("stereo_file.wav")
+
+
+            if (dim==2):
+                fig, ax = plt.subplots()
+                xdata, ydata = [], []
+                xdescr, ydescr = getattr(self, space[0]), getattr(self, space[1])
+                ln, = plt.plot([], [], 'r'+'--'+'o')
+
+                def init():
+                    ax.set_xlim(0, max(xdescr)*6/5)
+                    ax.set_ylim(0, max(ydescr)*6/5)
+                    a.play()
+                    return ln,
+
+                def update(time):
+                    if (self.onset_times[0] <= time < self.onset_times[1]): pass
+                    elif (self.onset_times[self.n_frames-1] <= time <= self.onset_times[self.n_frames]): pass
+                    else:
+                        i = 1
+                        found = False
+                        while (not found):
+                            if (self.onset_times[i] <= time <= self.onset_times[i+1]):
+                                xdata.append(xdescr[i])
+                                ydata.append(ydescr[i])
+                                ln.set_data(xdata, ydata)
+                                found = True
+                            else: i=i+1
+
+
+                    #ax.annotate(frame+1, (xdescr[frame], ydescr[frame]))
+                    return ln,
+
+                #a.play()
+                #a.close()
+                ani = FuncAnimation(fig, update, frames=self.times, init_func=init, blit=True, interval=1000*STEP/self.sr, repeat=False)
+                #a.close()
+                #ani = FuncAnimation(fig, update, frames=self.times, init_func=init, blit=True, interval=23 , repeat=False)
+                plt.xlabel(space[0])
+                plt.ylabel(space[1])
+                plt.show()
 
 
 
@@ -368,5 +459,4 @@ Notemax = 'D9'
 S = SignalSepare(y, sr, [y1,y2,y3], Notemin, Notemax, delOnsets, addOnsets)
 S.DetectionOnsets()
 S.Clustering()
-S.Concordance()
-S.ComputeDescripteurs(space = ['dissonance', 'dissonanceSignal'])
+S.ComputeDescripteurs(space = ['concordance', 'dissonance'])

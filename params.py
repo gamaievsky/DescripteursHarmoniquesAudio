@@ -7,11 +7,14 @@ begin_ref = 0.0 #beginning of the reference signal for computing cosine distance
 end_ref = 0.05 #end of the reference signal for computing cosine distance between clusters (in seconds).
 
 
-BINS_PER_OCTAVE = 12*2
-N_OCTAVES = 7
-NFFT = 2 ** 11 #(> 2**10) duration of analysis window in samples for feature extraction only.
-STEP = NFFT / 2 #(>2**6) et (STEP < NFFT) 50% overlap between time windows / also sub-frequency after analyzing spectral structure.
+BINS_PER_OCTAVE_ONSETS = 12*2
+BINS_PER_OCTAVE = 12*8
 WINDOW = np.hanning
+FILTER_SCALE = 0.5
+
+#NFFT = 2 ** 11 #(> 2**10) duration of analysis window in samples for feature extraction only.
+#STEP = NFFT / 2 #(>2**6) et (STEP < NFFT) 50% overlap between time windows / also sub-frequency after analyzing spectral structure.
+
 
 ## DETECTION ONSETS
 
@@ -46,7 +49,8 @@ norm_concTot = True
 plot_onsets = False
 plot_pistes = False
 plot_chromDescr = False
-plot_descr = True
+plot_descr = False
+plot_symb = True
 
 #PARAMETRES DES DESCRIPTEURS
 #Dissonance
