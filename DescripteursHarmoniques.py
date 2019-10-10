@@ -16,6 +16,7 @@ import soundfile as sf
 import os
 import pyaudio
 import threading
+import pickle
 
 
 import params
@@ -38,15 +39,7 @@ S2 = params.S2 #dissonance
 B1 = params.B1 #dissonance
 B2 = params.B2 #dissonance
 
-norm_spectre = params.norm_spectre
-norm_conc = params.norm_conc
-norm_concTot = params.norm_concTot
 
-plot_onsets = params.plot_onsets
-plot_pistes = params.plot_pistes
-plot_chromDescr = params.plot_chromDescr
-plot_descr = params.plot_descr
-plot_symb = params.plot_symb
 
 class AudioFile:
     chunk = 1024
@@ -83,7 +76,7 @@ class AudioFile:
 class SignalSepare:
     """ Prend en entrée en signal et le signal des pistes audio séparées. """
 
-    def __init__(self, signal, sr, pistes, Notemin  = 'D3', Notemax = 'D9', delOnsets = [], addOnsets = []):
+    def __init__(self, signal, sr, pistes, Notemin  = 'D3', Notemax = 'D9',  onset_frames = [], delOnsets = [], addOnsets = []):
         self.y = signal
         self.pistes = pistes
         self.sr = sr
@@ -102,12 +95,16 @@ class SignalSepare:
         self.n_frames = 0
         self.times = []
         self.onset_times = []
-        self.onset_frames = []
+        self.onset_frames = onset_frames
+        self.Chrom_ONSETS = []
         self.ChromDB_ONSETS = []
+        self.ChromSync_ONSETS = []
+        self.ChromPistesSync_ONSETS = []
         self.chromSync = []
         self.chromSyncDB = []
         self.chromPistesSync = []
         self.energy = []
+        self.energyPistes = []
         self.chromConc = []
         self.concordance = []
         self.chromConcTot = []
@@ -116,6 +113,16 @@ class SignalSepare:
         self.dissonance = []
         self.tensionSignal = []
         self.dissonanceSignal = []
+        self.chromHarmonicChange = []
+        self.harmonicChange = []
+        self.chromCrossConc = []
+        self.crossConcordance = []
+        self.chromCrossConcTot = []
+        self.crossConcordanceTot = []
+        self.chromDiffConcocordance = []
+        self.diffConcordance = []
+
+
 
     def DetectionOnsets(self):
         self.fmin = librosa.note_to_hz(self.Notemin)
@@ -123,56 +130,62 @@ class SignalSepare:
         #Nmin = int((sr/(fmax*(2**(1/BINS_PER_OCTAVE)-1))))
         #Nmax = int((sr/(fmin*(2**(1/BINS_PER_OCTAVE)-1))))
         self.n_bins_ONSETS = int((librosa.note_to_midi(self.Notemax) - librosa.note_to_midi(self.Notemin))*BINS_PER_OCTAVE_ONSETS/12)
-        self.ChromDB_ONSETS = librosa.amplitude_to_db(np.abs(librosa.cqt(y=self.y, sr=self.sr, hop_length = STEP, fmin= self.fmin, bins_per_octave=BINS_PER_OCTAVE_ONSETS, n_bins=self.n_bins_ONSETS, window=WINDOW)), ref=np.max)
+        self.Chrom_ONSETS = np.abs(librosa.cqt(y=self.y, sr=self.sr, hop_length = STEP, fmin= self.fmin, bins_per_octave=BINS_PER_OCTAVE_ONSETS, n_bins=self.n_bins_ONSETS, window=WINDOW))
+        self.ChromDB_ONSETS = librosa.amplitude_to_db(self.Chrom_ONSETS, ref=np.max)
         self.N = len(self.ChromDB_ONSETS[0])
-        Diff = np.zeros((self.n_bins_ONSETS,self.N))
-        Dev = np.zeros(self.N)
-        for j in range(1,self.N):
-            for i in range(self.n_bins_ONSETS):
-                Diff[i,j] = np.abs(self.ChromDB_ONSETS[i,j]-self.ChromDB_ONSETS[i,j-1])
-                Dev[j] = sum(Diff[:,j])
-
-        # FONCTION DE SEUIL
-        # Ajout de zéros en queue et en tête
-        l = []
-        Seuil = []
-        Onsets = []
-        for k  in range(int(H/2)):
-            l.append(0)
-        for val in Dev:
-            l.append(val)
-        for k  in range(int(H/2)):
-            l.append(0)
-        #Calcul de la médiane
-        for i in range(self.N):
-            Seuil.append(α + β*stat.median(l[i:i+H]))
-            if Dev[i] > Seuil[i]:
-                Onsets.append(i)
-
-
         self.times = librosa.frames_to_time(np.arange(self.N), sr=sr, hop_length=STEP)
 
-        # FONCTION DE TRI SUR LES  ONSETS
-        # Onsets espacés d'au moins T
-        i=0
-        while i<(len(Onsets)-1):
-            while (i<(len(Onsets)-1)) and (self.times[Onsets[i+1]]< self.times[Onsets[i]]+T):
-                if (Dev[Onsets[i+1]]-Seuil[Onsets[i+1]]) < (Dev[Onsets[i]]-Seuil[Onsets[i]]): del Onsets[i+1]
-                #if (Dev[Onsets[i+1]]) < (Dev[Onsets[i]]): del Onsets[i+1]
-                else: del Onsets[i]
-            i=i+1
+        # CALCUL DES ONSETS (pour onset précalculé, le rentrer dans self.onset_frames à l'initialisation)
+        Onset_given  = True
+        if len(self.onset_frames) == 0:
+            Onset_given =  False
+            Diff = np.zeros((self.n_bins_ONSETS,self.N))
+            Dev = np.zeros(self.N)
+            for j in range(1,self.N):
+                for i in range(self.n_bins_ONSETS):
+                    Diff[i,j] = np.abs(self.ChromDB_ONSETS[i,j]-self.ChromDB_ONSETS[i,j-1])
+                    Dev[j] = sum(Diff[:,j])
 
-        # Suppression manuelle des onsets en trop (cela nécessite d'avoir affiché les onsets jusqu'ici détectés)
-        self.delOnsets.sort(reverse = True)
-        for o in self.delOnsets:
-            Onsets.pop(o-1)
 
-         #Ajout manuel des onsets
-        for t in self.addOnsets:
-            Onsets.append(librosa.time_to_frames(t, sr=sr, hop_length=STEP))
-            Onsets.sort()
+            # FONCTION DE SEUIL
+            # Ajout de zéros en queue et en tête
+            l = []
+            Seuil = []
+            Onsets = []
+            for k  in range(int(H/2)):
+                l.append(0)
+            for val in Dev:
+                l.append(val)
+            for k  in range(int(H/2)):
+                l.append(0)
+            #Calcul de la médiane
+            for i in range(self.N):
+                Seuil.append(α + β*stat.median(l[i:i+H]))
+                if Dev[i] > Seuil[i]:
+                    Onsets.append(i)
 
-        self.onset_frames = librosa.util.fix_frames(Onsets, x_min=0, x_max=self.ChromDB_ONSETS.shape[1]-1)
+            # FONCTION DE TRI SUR LES  ONSETS
+            # Onsets espacés d'au moins T
+            i=0
+            while i<(len(Onsets)-1):
+                while (i<(len(Onsets)-1)) and (self.times[Onsets[i+1]]< self.times[Onsets[i]]+T):
+                    if (Dev[Onsets[i+1]]-Seuil[Onsets[i+1]]) < (Dev[Onsets[i]]-Seuil[Onsets[i]]): del Onsets[i+1]
+                    #if (Dev[Onsets[i+1]]) < (Dev[Onsets[i]]): del Onsets[i+1]
+                    else: del Onsets[i]
+                i=i+1
+
+            # Suppression manuelle des onsets en trop (cela nécessite d'avoir affiché les onsets jusqu'ici détectés)
+            self.delOnsets.sort(reverse = True)
+            for o in self.delOnsets:
+                Onsets.pop(o-1)
+
+             #Ajout manuel des onsets
+            for t in self.addOnsets:
+                Onsets.append(librosa.time_to_frames(t, sr=sr, hop_length=STEP))
+                Onsets.sort()
+            self.onset_frames = librosa.util.fix_frames(Onsets, x_min=0, x_max=self.ChromDB_ONSETS.shape[1]-1)
+
+
         self.onset_times = librosa.frames_to_time(self.onset_frames, sr=sr, hop_length = STEP)
         self.n_frames = len(self.onset_frames)-1
 
@@ -187,29 +200,28 @@ class SignalSepare:
         self.n_att = int(librosa.time_to_frames(T_att, sr=self.sr, hop_length = STEP))
         for j in range(self.n_frames):
             for i in range(self.n_bins):
-                self.chromSync[i,j] = np.mean(self.Chrom[i][(self.onset_frames[j]+self.n_att):(self.onset_frames[j+1]-self.n_att)])
-                self.chromSyncDB = librosa.amplitude_to_db(self.chromSync, ref=np.max)
-
-        #Normalisation du spectre
-        if norm_spectre:
-            for j in range(self.n_frames):
-                self.chromSync[:,j] = librosa.power_to_db(librosa.db_to_power(self.chromSync[:,j]) / np.sum(librosa.db_to_power(self.chromSync[:,j])))
+                self.chromSync[i,j] = np.median(self.Chrom[i][(self.onset_frames[j]+self.n_att):(self.onset_frames[j+1]-self.n_att)])
+        self.chromSyncDB = librosa.amplitude_to_db(self.chromSync, ref=np.max)
 
         #Calcul de l'énergie
         for j in range(self.n_frames):
             self.energy.append(np.sum(np.multiply(self.chromSync[:,j], self.chromSync[:,j])))
 
         #Affichage
-        if plot_onsets:
+        if params.plot_onsets:
             plt.figure(figsize=(13, 7))
             ax1 = plt.subplot(3, 1, 1)
             librosa.display.specshow(self.ChromDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.times)
             plt.title('CQT spectrogram')
 
             plt.subplot(3, 1, 2, sharex=ax1)
-            plt.plot(self.times, Dev, label='Deviation')
-            plt.plot(self.times, Seuil, color='g', label='Seuil')
-            plt.vlines(self.times[Onsets], 0, Dev.max(), color='r', alpha=0.9, linestyle='--', label='Onsets')
+            if not Onset_given:
+                plt.plot(self.times, Dev, label='Deviation')
+                plt.plot(self.times, Seuil, color='g', label='Seuil')
+                plt.vlines(self.times[Onsets], 0, Dev.max(), color='r', alpha=0.9, linestyle='--', label='Onsets')
+            else:
+                plt.vlines(self.times[self.onset_frames], 0, 1, color='r', alpha=0.9, linestyle='--', label='Onsets')
+
             plt.axis('tight')
             plt.legend(frameon=True, framealpha=0.75)
 
@@ -219,9 +231,8 @@ class SignalSepare:
 
 
     def Clustering(self):
-        """ Découpe et synchronise les pistes séparées sur les ONSET, stoque le spectrogramme
+        """ Découpe et synchronise les pistes séparées sur les ONSETS, stoque le spectrogramme
         synchronisé en construisant self.chromPistesSync"""
-        # Construction de Chrom
 
         #  Construction de chromPistesSync
         ChromPistes = []
@@ -230,9 +241,16 @@ class SignalSepare:
             self.chromPistesSync.append(np.zeros((self.n_bins,self.n_frames)))
             for j in range(self.n_frames):
                 for i in range(self.n_bins):
-                    self.chromPistesSync[k][i,j] = np.mean(ChromPistes[k][i][(self.onset_frames[j]+self.n_att):(self.onset_frames[j+1]-self.n_att)])
+                    self.chromPistesSync[k][i,j] = np.median(ChromPistes[k][i][(self.onset_frames[j]+self.n_att):(self.onset_frames[j+1]-self.n_att)])
+
+        # Calcul de l'énergie
+        self.energyPistes = np.zeros((self.n_pistes, self.n_frames))
+        for t in range(self.n_frames):
+            for k in range(self.n_pistes):
+                self.energyPistes[k,t] = np.sum(np.multiply(self.chromPistesSync[k][:,t], self.chromPistesSync[k][:,t]))
+
         #  Plot
-        if plot_pistes:
+        if params.plot_pistes:
             plt.figure(figsize=(13, 7))
             ax1 = plt.subplot(self.n_pistes,1,1)
             librosa.display.specshow(librosa.amplitude_to_db(self.chromPistesSync[0], ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.onset_times)
@@ -248,14 +266,26 @@ class SignalSepare:
         self.chromConc = np.zeros((self.n_bins,self.n_frames))
         for k in range(self.n_pistes-1):
             for l in range(k+1, self.n_pistes):
-                self.chromConc = self.chromConc + np.multiply(self.chromPistesSync[k], self.chromPistesSync[l])
+                if params.norm_conc == 'None':
+                    self.chromConc = self.chromConc + np.multiply(self.chromPistesSync[k], self.chromPistesSync[l])
+                if params.norm_conc == 'piste_by_piste':
+                    self.chromConc = self.chromConc + np.divide(np.multiply(self.chromPistesSync[k], self.chromPistesSync[l]), np.sqrt(np.multiply(self.energyPistes[k], self.energyPistes[l])))
+                elif params.norm_conc == 'energy_total':
+                    self.chromConc = self.chromConc + np.divide(np.multiply(self.chromPistesSync[k], self.chromPistesSync[l]), self.energy)
         self.concordance = self.chromConc.sum(axis=0)
-
-        #Normalisation
-        self.concordance = [x/y for x, y in zip(self.concordance, self.energy)]
         self.concordance[0]=0
         self.concordance[self.n_frames-1]=0
-        #self.concordance[self.n_pistes-1]=0
+
+
+        """elif params.norm_conc == 'energy_total':
+            self.chromConc = np.zeros((self.n_bins,self.n_frames))
+            for k in range(self.n_pistes-1):
+                for l in range(k+1, self.n_pistes):
+                    self.chromConc = self.chromConc + np.multiply(self.chromPistesSync[k], self.chromPistesSync[l])
+            self.concordance = self.chromConc.sum(axis=0)
+            #Normalisation
+            #self.concordance = [x/y for x, y in zip(self.concordance, self.energy)]"""
+
 
     def ConcordanceTot(self):
         """Multiplie les spectres (cqt) des différentes pistes pour créer le spectre de concordance,
@@ -264,7 +294,7 @@ class SignalSepare:
         self.chromConcTot = np.ones((self.n_bins,self.n_frames))
         for k in range(self.n_pistes):
             self.chromConcTot = np.multiply(self.chromConcTot, self.chromPistesSync[k])
-        self.concordanceTot = self.chromConcTot.sum(axis=0)
+        self.concordanceTot = np.divide(self.chromConcTot.sum(axis=0),np.power(self.energy, self.n_pistes/2))
 
         # Normalisation...
         self.concordanceTot[0]=0
@@ -285,6 +315,7 @@ class SignalSepare:
                 for p1 in range(self.n_pistes-1):
                     for p2 in range(p1+1, self.n_pistes-1):
                         self.dissonance = self.dissonance + (self.chromPistesSync[p1][b1,:] * self.chromPistesSync[p2][b2,:]) * diss
+        if params.norm_diss: self.dissonance = np.divide(self.dissonance, self.energy)
         self.dissonance[0]=0
         self.dissonance[self.n_frames-1]=0
 
@@ -302,14 +333,26 @@ class SignalSepare:
                 diss = np.exp(-B1*s*(freq[1]-freq[0]))-np.exp(-B2*s*(freq[1]-freq[0]))
 
                 self.dissonanceSignal = self.dissonanceSignal + (self.chromSync[b1,:] * self.chromSync[b2,:]) * diss
+        if params.norm_diss: self.dissonanceSignal = np.divide(self.dissonanceSignal, self.energy)
         self.dissonanceSignal[0]=0
         self.dissonanceSignal[self.n_frames-1]=0
 
+
     def Tension(self):
+        #Calcul du spectre du signal en 1/4 de tons pour avoir un calcul de la tension en temps raisonnable
+        ChromPistes_ONSETS = []
+        for k, voice in enumerate(self.pistes):
+            ChromPistes_ONSETS.append(np.abs(librosa.cqt(y=voice, sr=self.sr, hop_length = STEP, fmin= self.fmin, bins_per_octave=BINS_PER_OCTAVE_ONSETS, n_bins=self.n_bins_ONSETS)))
+            self.ChromPistesSync_ONSETS.append(np.zeros((self.n_bins_ONSETS,self.n_frames)))
+            for j in range(self.n_frames):
+                for i in range(self.n_bins_ONSETS):
+                    self.ChromPistesSync_ONSETS[k][i,j] = np.median(ChromPistes_ONSETS[k][i][(self.onset_frames[j]+self.n_att):(self.onset_frames[j+1]-self.n_att)])
+
+        #Clacul tension
         self.tension = np.zeros(self.n_frames)
-        for b1 in range(self.n_bins):
-            for b2 in range(self.n_bins):
-                for b3 in range(self.n_bins):
+        for b1 in range(self.n_bins_ONSETS):
+            for b2 in range(self.n_bins_ONSETS):
+                for b3 in range(self.n_bins_ONSETS):
 
                     int = [abs(b3-b1), abs(b2-b1), abs(b3-b2)]
                     int.sort()
@@ -318,27 +361,99 @@ class SignalSepare:
                     for p1 in range(self.n_pistes-2):
                         for p2 in range(p1+1, self.n_pistes-1):
                             for p3 in range(p2+1, self.n_pistes):
-                                self.tension = self.tension + (self.chromPistesSync[p1][b1,:] * self.chromPistesSync[p2][b2,:] * self.chromPistesSync[p3][b3,:]) * tens
+                                self.tension = self.tension + (self.ChromPistesSync_ONSETS[p1][b1,:] * self.ChromPistesSync_ONSETS[p2][b2,:] * self.ChromPistesSync_ONSETS[p3][b3,:]) * tens
+        self.tension = np.divide(self.tension, np.power(self.energy, 3/2))
         self.tension[0]=0
         self.tension[self.n_frames-1]=0
 
-        # Normalisation...
-
 
     def TensionSignal(self):
+        # Calcul des spectres des pistes en 1/4 de tons pour avoir un calcul de la tensionSignal en temps raisonnable
+        self.ChromSync_ONSETS = np.zeros((self.n_bins_ONSETS,self.n_frames))
+        for j in range(self.n_frames):
+            for i in range(self.n_bins_ONSETS):
+                self.ChromSync_ONSETS[i,j] = np.median(self.Chrom_ONSETS[i][(self.onset_frames[j]+self.n_att):(self.onset_frames[j+1]-self.n_att)])
+
+        #Calcul tensionSignal
         self.tensionSignal = np.zeros(self.n_frames)
-        for b1 in range(self.n_bins-2):
-            for b2 in range(b1+1, self.n_bins-1):
-                for b3 in range(b2+2, self.n_bins):
+        for b1 in range(self.n_bins_ONSETS-2):
+            for b2 in range(b1+1, self.n_bins_ONSETS-1):
+                for b3 in range(b2+2, self.n_bins_ONSETS):
                     int = [abs(b3-b1), abs(b2-b1), abs(b3-b2)]
                     int.sort()
                     monInt = int[1]-int[0]
                     tens = np.exp(-((int[1]-int[0])* BINS_PER_OCTAVE/(12*δ))**2)
-
-                    self.tensionSignal = self.tensionSignal + (self.chromSync[b1,:] * self.chromSync[b2,:] * self.chromSync[b3,:]) * tens
+                    self.tensionSignal = self.tensionSignal + (self.ChromSync_ONSETS[b1,:] * self.ChromSync_ONSETS[b2,:] * self.ChromSync_ONSETS[b3,:]) * tens
+        self.tensionSignal = np.divide(self.tensionSignal, np.power(self.energy, 3/2))
         self.tensionSignal[0]=0
         self.tensionSignal[self.n_frames-1]=0
-        # Normalisation...
+
+
+    def CrossConcordance(self):
+        if len(self.concordance) == 0: self.Concordance()
+
+        self.chromCrossConc = np.zeros((self.n_bins,self.n_frames-1))
+        for t in range(self.n_frames-1):
+            self.chromCrossConc[:,t] = np.multiply(self.chromConc[:,t],self.chromConc[:,t+1])
+            if params.norm_crossConc == 'energy + conc':
+                if self.concordance[t]*self.concordance[t+1]!=0:
+                    self.chromCrossConc[:,t] = np.divide(self.chromCrossConc[:,t], self.concordance[t]*self.concordance[t+1])
+        self.crossConcordance = self.chromCrossConc.sum(axis=0)
+        self.crossConcordance[0]=0
+        self.crossConcordance[self.n_frames-2]=0
+
+    def CrossConcordanceTot(self):
+        if len(self.concordanceTot) == 0: self.ConcordanceTot()
+
+        self.chromCrossConcTot = np.zeros((self.n_bins,self.n_frames-1))
+        for t in range(self.n_frames-1):
+            self.chromCrossConcTot[:,t] = np.multiply(self.chromConcTot[:,t],self.chromConcTot[:,t+1])
+            if params.norm_crossConcTot == 'energy + concTot':
+                if self.concordanceTot[t]*self.concordanceTot[t+1]!=0:
+                    self.chromCrossConcTot[:,t] = np.divide(self.chromCrossConcTot[:,t], self.concordanceTot[t]*self.concordanceTot[t+1])
+        self.crossConcordanceTot = self.chromCrossConcTot.sum(axis=0)
+        self.crossConcordanceTot[0]=0
+        self.crossConcordanceTot[self.n_frames-2]=0
+
+    def HarmonicChange(self):
+        self.chromHarmonicChange = np.zeros((self.n_bins,self.n_frames-1))
+        for t in range(self.n_frames-1):
+            # Par défaut, params.type_harmChange == 'relative'
+
+
+            if params.norm_harmChange == 'None':
+                self.chromHarmonicChange[:,t] = self.chromSync[:,t+1] - self.chromSync[:,t]
+
+            elif params.norm_harmChange == 'frame_by_frame':
+                self.chromHarmonicChange[:,t] = np.subtract([x/np.sqrt(self.energy[t+1]) for x in self.chromSync[:,t+1]], [y/np.sqrt(self.energy[t]) for y in self.chromSync[:,t]])
+
+            elif params.norm_harmChange == 'general':
+                self.chromHarmonicChange[:,t] = np.divide(self.chromSync[:,t+1] - self.chromSync[:,t], (self.energy[t+1]*self.energy[t])**(1/4))
+
+            if params.type_harmChange == 'absolute': self.chromHarmonicChange[:,t] = np.abs(self.chromHarmonicChange[:,t])
+
+        self.harmonicChange = self.chromHarmonicChange.sum(axis=0)
+        self.harmonicChange[0]=0
+        self.harmonicChange[self.n_frames-2]=0
+
+    def DiffConcordance(self):
+        self.chromDiffConc = np.zeros((self.n_bins,self.n_frames-1))
+        for k in range(self.n_pistes):
+            for l in range(self.n_pistes):
+                if k != l:
+                    for t in range(self.n_frames-1):
+                        if params.norm_diffConc == 'piste_by_piste':
+                            self.chromDiffConc[:,t] = self.chromDiffConc[:,t] + np.divide(np.multiply(self.chromPistesSync[k][:,t], self.chromPistesSync[l][:,t+1]), np.sqrt(self.energyPistes[k][t] * self.energyPistes[l][t+1]))
+                        elif params.norm_diffConc == 'frame-by-frame':
+                            self.chromDiffConc[:,t] = self.chromDiffConc[:,t] + np.divide(np.multiply(self.chromPistesSync[k][:,t], self.chromPistesSync[l][:,t+1]), np.sqrt(self.energy[t] * self.energy[t+1]))
+
+
+        self.diffConcordance = self.chromDiffConc.sum(axis=0)
+        self.diffConcordance[0]=0
+        self.diffConcordance[self.n_frames-2]=0
+
+
+
 
 
     def ComputeDescripteurs(self, space = ['concordance','concordanceTot']):
@@ -351,10 +466,14 @@ class SignalSepare:
         if 'dissonance' in space: self.Dissonance()
         if 'tensionSignal' in space: self.TensionSignal()
         if 'dissonanceSignal' in space: self.DissonanceSignal()
+        if 'crossConcordance' in space: self.CrossConcordance()
+        if 'crossConcordanceTot' in space: self.CrossConcordanceTot()
+        if 'harmonicChange' in space: self.HarmonicChange()
+        if 'diffConcordance' in space: self.DiffConcordance()
         #print(np.shape(np.asarray(self.chromConc)))
 
         #Plot les spectrogrammes
-        if plot_chromDescr:
+        if params.plot_chromDescr:
             plt.figure(figsize=(13, 7))
             ax1 = plt.subplot(3,1,1)
             librosa.display.specshow(self.ChromDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.times)
@@ -370,7 +489,7 @@ class SignalSepare:
             plt.show()
 
         #Plot les descripteurs harmoniques
-        if plot_descr:
+        if params.plot_descr:
             plt.figure(figsize=(13, 7))
             ax1 = plt.subplot(dim+1,1,1)
             librosa.display.specshow(self.ChromDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.times)
@@ -378,19 +497,29 @@ class SignalSepare:
 
             for k, descr in enumerate(space):
                 plt.subplot(dim+1, 1, k+2, sharex=ax1)
-                plt.hlines(getattr(self, descr)[1:(self.n_frames-1)], self.onset_times[1:(self.n_frames-1)], self.onset_times[2:self.n_frames], color=['b','r','g','c','m','y'][k], label=descr)
-                plt.vlines(self.onset_times[1:self.n_frames], 0, max(getattr(self, descr)), color='k', alpha=0.9, linestyle='--')
+                plt.vlines(self.onset_times[1:self.n_frames], min(getattr(self, descr)), max(getattr(self, descr)), color='k', alpha=0.9, linestyle='--')
+                if not all(x>=0 for x in getattr(self, descr)):
+                    plt.hlines(0,self.onset_times[0], self.onset_times[self.n_frames], alpha=0.5, linestyle = ':')
+
+                # Descripteurs statiques
+                if len(getattr(self, descr)) == self.n_frames:
+                    plt.hlines(getattr(self, descr)[1:(self.n_frames-1)], self.onset_times[1:(self.n_frames-1)], self.onset_times[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][k], label=descr)
+                # Descripteurs dynamiques
+                elif len(getattr(self, descr)) == (self.n_frames-1):
+                    plt.plot(self.onset_times[2:(self.n_frames-1)], getattr(self, descr)[1:(self.n_frames-2)],['b','r','g','c','m','y','b','r','g'][k]+'o', label=descr)
+                    plt.hlines(getattr(self, descr)[1:(self.n_frames-2)], [t-0.25 for t in self.onset_times[2:(self.n_frames-1)]], [t+0.25 for t in self.onset_times[2:(self.n_frames-1)]], color=['b','r','g','c','m','y','b','r','g'][k], alpha=0.9, linestyle=':'  )
                 plt.legend(frameon=True, framealpha=0.75)
             plt.show()
 
         #Plot des représentations symboliques
-        if plot_symb:
-            # Supprimer le  fichier stereo_file.wav s'il existe
-            if os.path.exists("stereo_file.wav"):
-              os.remove("stereo_file.wav")
-            # Écrire un fichier wav à partir de y et sr
-            sf.write('stereo_file.wav', self.y, self.sr)
-            a = AudioFile("stereo_file.wav")
+        if params.plot_symb:
+            if params.play:
+                # Supprimer le  fichier stereo_file.wav s'il existe
+                if os.path.exists("stereo_file.wav"):
+                  os.remove("stereo_file.wav")
+                # Écrire un fichier wav à partir de y et sr
+                sf.write('stereo_file.wav', self.y, self.sr)
+                a = AudioFile("stereo_file.wav")
 
 
             if (dim==2):
@@ -402,7 +531,7 @@ class SignalSepare:
                 def init():
                     ax.set_xlim(0, max(xdescr)*6/5)
                     ax.set_ylim(0, max(ydescr)*6/5)
-                    a.play()
+                    if play : a.play()
                     return ln,
 
                 def update(time):
@@ -426,7 +555,7 @@ class SignalSepare:
                 #a.play()
                 #a.close()
                 ani = FuncAnimation(fig, update, frames=self.times, init_func=init, blit=True, interval=1000*STEP/self.sr, repeat=False)
-                #a.close()
+                # a.close()
                 #ani = FuncAnimation(fig, update, frames=self.times, init_func=init, blit=True, interval=23 , repeat=False)
                 plt.xlabel(space[0])
                 plt.ylabel(space[1])
@@ -434,12 +563,12 @@ class SignalSepare:
 
 
 
-title = 'PalestrinaM'
-#Palestrina, PalestrinaM, SuiteAccords
-y, sr = librosa.load('/Users/manuel/Github/DescripteursHarmoniquesAudio/Exemples/'+title+'.wav')
-y1, sr = librosa.load('/Users/manuel/Github/DescripteursHarmoniquesAudio/Exemples/'+title+'-Basse.wav')
-y2, sr = librosa.load('/Users/manuel/Github/DescripteursHarmoniquesAudio/Exemples/'+title+'-Alto.wav')
-y3, sr = librosa.load('/Users/manuel/Github/DescripteursHarmoniquesAudio/Exemples/'+title+'-Soprano.wav')
+title = 'SuiteAccords'
+#Palestrina, PalestrinaM, SuiteAccords, UnSeulAccord, AccordsParalleles, AccordRepete, 'SuiteAccordsOrgue', 'SuiteAccordsPiano'
+y, sr = librosa.load('Exemples/'+title+'.wav')
+y1, sr = librosa.load('Exemples/'+title+'-Basse.wav')
+y2, sr = librosa.load('Exemples/'+title+'-Alto.wav')
+y3, sr = librosa.load('Exemples/'+title+'-Soprano.wav')
 delOnsets = []
 addOnsets = []
 if params.SemiManual:
@@ -453,10 +582,17 @@ if params.SemiManual:
 
 
 
-Notemin = 'D3'
+Notemin = 'D3' #'SuiteAccordsOrgue': A2
 Notemax = 'D9'
 
-S = SignalSepare(y, sr, [y1,y2,y3], Notemin, Notemax, delOnsets, addOnsets)
+with open('Onset_given', 'rb') as f:
+     onset_frames = pickle.load(f)
+S = SignalSepare(y, sr, [y1,y2,y3], Notemin, Notemax,onset_frames, delOnsets, addOnsets)
 S.DetectionOnsets()
+#with open('Onset_given2', 'wb') as f:
+#     pickle.dump(S.onset_frames, f)
 S.Clustering()
-S.ComputeDescripteurs(space = ['concordance', 'dissonance'])
+S.ComputeDescripteurs(space = ['concordance'])
+
+#Nmin = int(S.sr/(S.fmax*(2**(1/BINS_PER_OCTAVE)-1)))
+#Nmax = int((S.sr/(S.fmin*(2**(1/BINS_PER_OCTAVE)-1))))

@@ -10,7 +10,7 @@ end_ref = 0.05 #end of the reference signal for computing cosine distance betwee
 BINS_PER_OCTAVE_ONSETS = 12*2
 BINS_PER_OCTAVE = 12*8
 WINDOW = np.hanning
-FILTER_SCALE = 0.5
+FILTER_SCALE = 1
 
 #NFFT = 2 ** 11 #(> 2**10) duration of analysis window in samples for feature extraction only.
 #STEP = NFFT / 2 #(>2**6) et (STEP < NFFT) 50% overlap between time windows / also sub-frequency after analyzing spectral structure.
@@ -18,39 +18,49 @@ FILTER_SCALE = 0.5
 
 ## DETECTION ONSETS
 
-SemiManual = True
+SemiManual = False
 #Paramètres  de la fonction de seuil pour la détection d'onset_strength
-α = 83
+α = 140
 β = 1
-H =  40
+H =  30
 #Filtre sur les onsets
 T = 0.3 #(en secondes)
-T_att = 0.1
+T_att = 0.5
 
 #(α,β,H,T,T_att)
 paramsDetOnsets_Palestrina = [172, 1, 30, 0.3, 0.1]
 paramsDetOnsets_PalestrinaM = [105, 1, 30, 0.3, 0.1]
-paramsDetOnsets_SuiteAccords = [83, 1, 40, 0.3, 0.3]
+paramsDetOnsets_SuiteAccords = [83, 1, 40, 0.3, 0.1]
+paramsDetOnsets_AccordsParalleles = [140, 1, 30, 0.3, 0.1]
 #Ajustements = ([frames], [times])
 [delOnsets_Palestrina, addOnsets_Palestrina] = [[], []]
 [delOnsets_PalestrinaM, addOnsets_PalestrinaM] = [[6,8,9], [4.5]] #7,8,9 juste pour éviter la division du même accord
 [delOnsets_SuiteAccords, addOnsets_SuiteAccords] = [[2,3,4,6,8,10,11,12],[6.1]]
+delOnsets_AccordsParalleles, addOnsets_AccordsParalleles = [5,6],[6.05,7.5]#6.05
+#delOnsets_AccordsParalleles, addOnsets_AccordsParalleles = [4,5,6],[5.0,6.05,7.5]#Dévié
 
 #Tri des fréquences qui entrent en compte dans le calcul de la déviation
 triFreq = True
 
 
 ## NORMALISATIONS
-norm_spectre = False
-norm_conc = True
-norm_concTot = True
+norm_conc = 'piste_by_piste' # 'None' 'piste_by_piste', 'energy_total'
+norm_diss = True
+norm_crossConc = 'energy' #'energy', 'energy + conc' ##energy : même normalisation que dans le calcul de la consonance
+norm_crossConcTot = 'energy' #'energy', 'energy + conc' ##energy : même normalisation que dans le calcul de la consonance totale
+type_harmChange = 'relative' # 'absolute', 'relative'
+norm_harmChange = 'general' # 'None', 'frame_by_frame', 'general'
+norm_diffConc = 'piste_by_piste' # 'piste_by_piste', 'frame-by-frame'
+
 
 #PLOT
-plot_onsets = False
+plot_onsets = True
 plot_pistes = False
 plot_chromDescr = False
 plot_descr = False
-plot_symb = True
+plot_symb = False
+play = False
+
 
 #PARAMETRES DES DESCRIPTEURS
 #Dissonance

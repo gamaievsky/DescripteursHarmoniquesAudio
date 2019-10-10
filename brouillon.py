@@ -12,15 +12,33 @@ import wave
 import sys
 import soundfile as sf
 import os
+import pickle
 
+import numpy as np
+
+
+h = [1,2, 3,4,5,6,7,8]
+if all(x>0 for x in h):
+    print('c est bon')
+else: print('c est pas bon')
+
+
+print(h>0)
+
+print(np.power(h,0.5))
+
+x = np.divide([[1,2,3,4,5,6,7,8], [1,2,3,4,5,4,3,2]], [1,2,3,4,5,4,3,2])
+print(x)
+
+
+with open('Onset_given', 'rb') as f:
+     onset_frames = pickle.load(f)
+print(type(onset_frames))
 
 if os.path.exists("stereo_file.wav"):
   os.remove("stereo_file.wav")
-else:
-  print("The file does not exist")
 
-
-y, sr = librosa.load("PalestrinaM.wav")
+y, sr = librosa.load('Exemples/SuiteAccords.wav')
 audio = sf.write('stereo_file.wav', y, sr)
 
 
@@ -51,7 +69,7 @@ class AudioFile:
         self.p.terminate()
 
 # Usage example for pyaudio
-a = AudioFile("Palestrina.wav")
+a = AudioFile("stereo_file.wav")
 a.play()
 a.close()
 
@@ -237,3 +255,20 @@ def animate(i,argu):
 
 ani = animation.FuncAnimation(fig, animate, fargs=[5],interval = 100)
 plt.show()
+
+
+
+        #Calcul en 1/4 de tons pour avoir un calcul de la tension en temps raisonnable
+        self.chromSync_ONSETS = np.zeros((self.N,self.n_frames))
+        self.n_att = int(librosa.time_to_frames(T_att, sr=self.sr, hop_length = STEP))
+        for j in range(self.n_frames):
+            for i in range(self.N):
+                self.chromSync_ONSETS[i,j] = np.median(self.Chrom_ONSETS[i][(self.onset_frames[j]+self.n_att):(self.onset_frames[j+1]-self.n_att)])
+
+        ChromPistes_ONSETS = []
+        for k, voice in enumerate(self.pistes):
+            ChromPistes_ONSETS.append(np.abs(librosa.cqt(y=voice, sr=self.sr, hop_length = STEP, fmin= self.fmin, bins_per_octave=BINS_PER_OCTAVE, n_bins=self.N)))
+            self.chromPistesSync_ONSETS.append(np.zeros((self.N,self.n_frames)))
+            for j in range(self.n_frames):
+                for i in range(self.N):
+                    self.chromPistesSync_ONSETS[k][i,j] = np.median(ChromPistes[k][i][(self.onset_frames[j]+self.n_att):(self.onset_frames[j+1]-self.n_att)])
