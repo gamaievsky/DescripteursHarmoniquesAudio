@@ -14,10 +14,65 @@ import soundfile as sf
 import os
 import pickle
 
+
+import librosa
+import librosa.display
 import numpy as np
+Notemin = 'D3'
+Notemax = 'D9'
+y, sr = librosa.load('Exemples/SuiteAccordsPiano.wav')
+fmin = librosa.note_to_hz(Notemin)
+n_bins = int((librosa.note_to_midi(Notemax) - librosa.note_to_midi(Notemin))*8)
+Chrom = np.abs(librosa.cqt(y=y, sr=sr, hop_length = 512, fmin= fmin, bins_per_octave=12*8, n_bins=n_bins))
+H, P = librosa.decompose.hpss(Chrom)
+
+import matplotlib.pyplot as plt
+plt.figure()
+plt.subplot(3, 1, 1)
+librosa.display.specshow(librosa.amplitude_to_db(np.abs(Chrom),ref=np.max), bins_per_octave=12*8, fmin=fmin, y_axis='cqt_note', x_axis='time')
+plt.colorbar(format='%+2.0f dB')
+plt.title('Full power spectrogram')
+
+plt.subplot(3, 1, 2)
+librosa.display.specshow(librosa.amplitude_to_db(np.abs(H),ref=np.max), bins_per_octave=12*8, fmin=fmin, y_axis='cqt_note', x_axis='time')
+plt.colorbar(format='%+2.0f dB')
+plt.title('Harmonic power spectrogram')
+
+plt.subplot(3, 1, 3)
+librosa.display.specshow(librosa.amplitude_to_db(np.abs(P),ref=np.max), bins_per_octave=12*8, fmin=fmin, y_axis='cqt_note', x_axis='time')
+plt.colorbar(format='%+2.0f dB')
+plt.title('Percussive power spectrogram')
+plt.tight_layout()
+plt.show()
 
 
-h = [1,2, 3,4,5,6,7,8]
+
+
+
+
+
+
+
+print(len('ldsjhljghsj'))
+
+print(librosa.note_to_hz('A'))
+
+print(np.shape(np.correlate([1, 2, 3], [0, 1, 0.5,4,5], "full")))
+
+
+
+
+for i in range(-3,3):
+    print(i)
+
+
+print(np.argmax([1, 7, 3, 4]))
+
+
+print(np.max(h))
+
+print(np.divide(h,0.5))
+
 if all(x>0 for x in h):
     print('c est bon')
 else: print('c est pas bon')

@@ -6,6 +6,8 @@ from operator import itemgetter, attrgetter, truediv
 import statistics as stat
 from scipy import signal
 import math
+import matplotlib.image as mpimg
+
 #from scipy import signal
 
 import librosa
@@ -76,7 +78,7 @@ class AudioFile:
 class SignalSepare:
     """ Prend en entrée en signal et le signal des pistes audio séparées. """
 
-    def __init__(self, signal, sr, pistes, Notemin  = 'D3', Notemax = 'D9',  onset_frames = [], delOnsets = [], addOnsets = []):
+    def __init__(self, signal, sr, pistes, Notemin  = 'D3', Notemax = 'D9',  onset_frames = [], delOnsets = [], addOnsets = [], score = []):
         self.y = signal
         self.pistes = pistes
         self.sr = sr
@@ -85,6 +87,7 @@ class SignalSepare:
         self.Notemax = Notemax
         self.delOnsets = delOnsets
         self.addOnsets = addOnsets
+        self.score = score
         self.n_bins_ONSETS = 0
         self.n_bins = 0
         self.N = 0
@@ -121,6 +124,8 @@ class SignalSepare:
         self.crossConcordanceTot = []
         self.chromDiffConcocordance = []
         self.diffConcordance = []
+        self.harmonicity = []
+        self.virtualPitch = []
 
 
 
@@ -189,9 +194,13 @@ class SignalSepare:
         self.onset_times = librosa.frames_to_time(self.onset_frames, sr=sr, hop_length = STEP)
         self.n_frames = len(self.onset_frames)-1
 
-        # Transformée avec la précision due pour l'analyse
+
+
+        # TRANSFORMÉE avec la précision due pour l'analyse
         self.n_bins = int((librosa.note_to_midi(self.Notemax) - librosa.note_to_midi(self.Notemin))*BINS_PER_OCTAVE/12)
         self.Chrom = np.abs(librosa.cqt(y=self.y, sr=self.sr, hop_length = STEP, fmin= self.fmin, bins_per_octave=BINS_PER_OCTAVE, n_bins=self.n_bins, window=WINDOW, filter_scale = FILTER_SCALE))
+        # Décomposition partie harmonique / partie percussive
+        if params.decompo_hpss: self.Chrom, Percu = librosa.decompose.hpss(self.Chrom)
         self.ChromDB = librosa.amplitude_to_db(self.Chrom, ref=np.max)
 
 
@@ -209,7 +218,7 @@ class SignalSepare:
 
         #Affichage
         if params.plot_onsets:
-            plt.figure(figsize=(13, 7))
+            plt.figure(1,figsize=(13, 7))
             ax1 = plt.subplot(3, 1, 1)
             librosa.display.specshow(self.ChromDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.times)
             plt.title('CQT spectrogram')
@@ -225,19 +234,39 @@ class SignalSepare:
             plt.axis('tight')
             plt.legend(frameon=True, framealpha=0.75)
 
-            ax1 = plt.subplot(3, 1, 3, sharex=ax1)
+            plt.subplot(3, 1, 3, sharex=ax1)
             librosa.display.specshow(self.chromSyncDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times)
+            plt.tight_layout()
+
+
+        if params.plot_decompo_hpss & params.decompo_hpss:
+            plt.figure(2,figsize=(13, 7))
+            plt.subplot(3, 1, 1)
+            librosa.display.specshow(librosa.amplitude_to_db(np.abs(librosa.cqt(y=self.y, sr=self.sr, hop_length = STEP, fmin= self.fmin, bins_per_octave=BINS_PER_OCTAVE, n_bins=self.n_bins, window=WINDOW, filter_scale = FILTER_SCALE)),ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time')
+            plt.title('Full cqt transform')
+
+            plt.subplot(3, 1, 2)
+            librosa.display.specshow(librosa.amplitude_to_db(self.Chrom,ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time')
+            plt.title('Harmonic part')
+
+            plt.subplot(3, 1, 3)
+            librosa.display.specshow(librosa.amplitude_to_db(Percu,ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time')
+            plt.title('Percussive part')
+            plt.tight_layout()
             plt.show()
 
 
     def Clustering(self):
         """ Découpe et synchronise les pistes séparées sur les ONSETS, stoque le spectrogramme
         synchronisé en construisant self.chromPistesSync"""
-
+# if params.decompo_hpss: self.Chrom, Percu = librosa.decompose.hpss(self.Chrom)
         #  Construction de chromPistesSync
         ChromPistes = []
         for k, voice in enumerate(self.pistes):
-            ChromPistes.append(np.abs(librosa.cqt(y=voice, sr=self.sr, hop_length = STEP, fmin= self.fmin, bins_per_octave=BINS_PER_OCTAVE, n_bins=self.n_bins)))
+            if params.decompo_hpss:
+                ChromPistes.append(librosa.decompose.hpss(np.abs(librosa.cqt(y=voice, sr=self.sr, hop_length = STEP, fmin= self.fmin, bins_per_octave=BINS_PER_OCTAVE, n_bins=self.n_bins)))[0])
+            else: ChromPistes.append(np.abs(librosa.cqt(y=voice, sr=self.sr, hop_length = STEP, fmin= self.fmin, bins_per_octave=BINS_PER_OCTAVE, n_bins=self.n_bins)))
+
             self.chromPistesSync.append(np.zeros((self.n_bins,self.n_frames)))
             for j in range(self.n_frames):
                 for i in range(self.n_bins):
@@ -251,12 +280,13 @@ class SignalSepare:
 
         #  Plot
         if params.plot_pistes:
-            plt.figure(figsize=(13, 7))
+            plt.figure(3,figsize=(13, 7))
             ax1 = plt.subplot(self.n_pistes,1,1)
             librosa.display.specshow(librosa.amplitude_to_db(self.chromPistesSync[0], ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.onset_times)
             for k in range(1, self.n_pistes):
                 plt.subplot(self.n_pistes, 1, k+1, sharex=ax1)
                 librosa.display.specshow(librosa.amplitude_to_db(self.chromPistesSync[k], ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.onset_times)
+            plt.tight_layout()
             plt.show()
 
     def Concordance(self):
@@ -402,6 +432,7 @@ class SignalSepare:
         self.crossConcordance[0]=0
         self.crossConcordance[self.n_frames-2]=0
 
+
     def CrossConcordanceTot(self):
         if len(self.concordanceTot) == 0: self.ConcordanceTot()
 
@@ -414,6 +445,7 @@ class SignalSepare:
         self.crossConcordanceTot = self.chromCrossConcTot.sum(axis=0)
         self.crossConcordanceTot[0]=0
         self.crossConcordanceTot[self.n_frames-2]=0
+
 
     def HarmonicChange(self):
         self.chromHarmonicChange = np.zeros((self.n_bins,self.n_frames-1))
@@ -436,6 +468,7 @@ class SignalSepare:
         self.harmonicChange[0]=0
         self.harmonicChange[self.n_frames-2]=0
 
+
     def DiffConcordance(self):
         self.chromDiffConc = np.zeros((self.n_bins,self.n_frames-1))
         for k in range(self.n_pistes):
@@ -452,6 +485,28 @@ class SignalSepare:
         self.diffConcordance[0]=0
         self.diffConcordance[self.n_frames-2]=0
 
+    def Harmonicity(self):
+        # Construction du spectre harmonique
+        dec = BINS_PER_OCTAVE/6 # décalage d'un ton pour tenir compte de l'épaisseur des gaussiennes
+        epaiss = int(np.rint(BINS_PER_OCTAVE/(2*params.σ)))
+        SpecHarm = np.zeros(2*int(dec) + int(np.rint(BINS_PER_OCTAVE * np.log2(params.κ))))
+        for k in range(params.κ):
+            pic =  int(dec + np.rint(BINS_PER_OCTAVE * np.log2(k+1)))
+            for i in range(-epaiss, epaiss+1):
+                SpecHarm[pic + i] = 1/(k+1)**params.decr
+
+
+        # Correlation avec le spectre réel
+        for t in range(self.n_frames):
+            self.harmonicity.append(max(np.correlate(np.power(self.chromSync[:,t],params.norm_harm), SpecHarm,"full")) / self.energy[t]**(params.norm_harm/2))
+
+            # Virtual Pitch
+            self.virtualPitch.append(np.argmax(np.correlate(np.power(self.chromSync[:,t],2), SpecHarm,"full")))
+        virtualNotes = librosa.hz_to_note([self.fmin * (2**((i-len(SpecHarm)+dec+1)/BINS_PER_OCTAVE)) for i in self.virtualPitch] , cents = False)
+        print(virtualNotes[1:self.n_frames-1])
+
+        # Séparation contribution au virtual pitch / le reste
+
 
 
 
@@ -466,6 +521,7 @@ class SignalSepare:
         if 'dissonance' in space: self.Dissonance()
         if 'tensionSignal' in space: self.TensionSignal()
         if 'dissonanceSignal' in space: self.DissonanceSignal()
+        if 'harmonicity' in space: self.Harmonicity()
         if 'crossConcordance' in space: self.CrossConcordance()
         if 'crossConcordanceTot' in space: self.CrossConcordanceTot()
         if 'harmonicChange' in space: self.HarmonicChange()
@@ -474,7 +530,7 @@ class SignalSepare:
 
         #Plot les spectrogrammes
         if params.plot_chromDescr:
-            plt.figure(figsize=(13, 7))
+            plt.figure(4,figsize=(13, 7))
             ax1 = plt.subplot(3,1,1)
             librosa.display.specshow(self.ChromDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.times)
             plt.title('CQT spectrogram')
@@ -486,17 +542,30 @@ class SignalSepare:
             plt.subplot(3, 1, 3, sharex=ax1)
             librosa.display.specshow(librosa.amplitude_to_db(self.chromConcTot, ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.onset_times)
             plt.title('Spectre de concordance Totale')
+            plt.tight_layout()
             plt.show()
 
         #Plot les descripteurs harmoniques
         if params.plot_descr:
-            plt.figure(figsize=(13, 7))
-            ax1 = plt.subplot(dim+1,1,1)
+
+            plt.figure(5,figsize=(13, 7))
+            s = int(params.plot_score)
+
+            # Partition
+            if params.plot_score & (len(self.score)!=0):
+                #plt.subplot(dim+1+s,1,s)
+                img=mpimg.imread(self.score)
+                score = plt.subplot(dim+1+s,1,1)
+                plt.axis('off')
+                score.imshow(img)
+
+
+            ax1 = plt.subplot(dim+1+s,1,1+s)
             librosa.display.specshow(self.ChromDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.times)
-            plt.title('CQT spectrogram')
+            plt.title(title)
 
             for k, descr in enumerate(space):
-                plt.subplot(dim+1, 1, k+2, sharex=ax1)
+                plt.subplot(dim+1+s, 1, k+2+s, sharex=ax1)
                 plt.vlines(self.onset_times[1:self.n_frames], min(getattr(self, descr)), max(getattr(self, descr)), color='k', alpha=0.9, linestyle='--')
                 if not all(x>=0 for x in getattr(self, descr)):
                     plt.hlines(0,self.onset_times[0], self.onset_times[self.n_frames], alpha=0.5, linestyle = ':')
@@ -509,6 +578,7 @@ class SignalSepare:
                     plt.plot(self.onset_times[2:(self.n_frames-1)], getattr(self, descr)[1:(self.n_frames-2)],['b','r','g','c','m','y','b','r','g'][k]+'o', label=descr)
                     plt.hlines(getattr(self, descr)[1:(self.n_frames-2)], [t-0.25 for t in self.onset_times[2:(self.n_frames-1)]], [t+0.25 for t in self.onset_times[2:(self.n_frames-1)]], color=['b','r','g','c','m','y','b','r','g'][k], alpha=0.9, linestyle=':'  )
                 plt.legend(frameon=True, framealpha=0.75)
+            plt.tight_layout()
             plt.show()
 
         #Plot des représentations symboliques
@@ -563,7 +633,7 @@ class SignalSepare:
 
 
 
-title = 'SuiteAccords'
+title = 'SuiteAccordsPiano'
 #Palestrina, PalestrinaM, SuiteAccords, UnSeulAccord, AccordsParalleles, AccordRepete, 'SuiteAccordsOrgue', 'SuiteAccordsPiano'
 y, sr = librosa.load('Exemples/'+title+'.wav')
 y1, sr = librosa.load('Exemples/'+title+'-Basse.wav')
@@ -584,15 +654,17 @@ if params.SemiManual:
 
 Notemin = 'D3' #'SuiteAccordsOrgue': A2
 Notemax = 'D9'
+score = 'Exemples/Score_SuiteAccords.png'
+with open('Onset_given_SuiteAccordsPiano', 'rb') as f:
+    onset_frames = pickle.load(f)
 
-with open('Onset_given', 'rb') as f:
-     onset_frames = pickle.load(f)
-S = SignalSepare(y, sr, [y1,y2,y3], Notemin, Notemax,onset_frames, delOnsets, addOnsets)
+S = SignalSepare(y, sr, [y1,y2,y3], Notemin, Notemax, onset_frames, delOnsets, addOnsets, score)
 S.DetectionOnsets()
-#with open('Onset_given2', 'wb') as f:
-#     pickle.dump(S.onset_frames, f)
+# with open('Onset_given_SuiteAccordsPiano', 'wb') as f:
+#      pickle.dump(S.onset_frames, f)
 S.Clustering()
-S.ComputeDescripteurs(space = ['concordance'])
+S.ComputeDescripteurs(space = ['concordance', 'concordanceTot'])
+
 
 #Nmin = int(S.sr/(S.fmax*(2**(1/BINS_PER_OCTAVE)-1)))
 #Nmax = int((S.sr/(S.fmin*(2**(1/BINS_PER_OCTAVE)-1))))
