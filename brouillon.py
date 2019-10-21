@@ -14,6 +14,53 @@ import soundfile as sf
 import os
 import pickle
 
+import matplotlib.pyplot as plt
+import numpy as np
+
+print((2.27*440**(0.477))/440)
+
+print(np.log(5.75/3.5)/(5.75+3.5))
+
+import librosa
+print(librosa.note_to_hz(['G5']))
+
+
+
+import matplotlib.pyplot as plt
+import numpy as np
+x = np.arange(0,2,0.001)
+b1=1
+b2=5.75
+diss = np.exp(-b1*x)-np.exp(-b2*x)
+plt.figure()
+plt.plot(x,diss)
+plt.show()
+
+
+
+
+
+
+
+
+pl
+    return diss
+
+y1, y2, y3, y4, y5 = dissonance(f1,x1), dissonance(f2,x2), dissonance(f3,x3), dissonance(f4,x4), dissonance(f5,x5)
+
+plt.figure()
+plt.plot(x,y1,x,y2,x,y3,x,y4,x,y5)
+plt.legend(['%.2f' %f1, '%.2f' %f2, '%.2f' %f3, '%.2f' %f4, '%.2f' %f5])
+# print(x[np.argmax(diss)])
+for i in range(12):
+    plt.vlines(1+(i+1)/12, 0, np.max(y1), linestyle='--')
+plt.show()
+
+
+
+
+
+
 
 import librosa
 import librosa.display
@@ -24,25 +71,31 @@ y, sr = librosa.load('Exemples/SuiteAccordsPiano.wav')
 fmin = librosa.note_to_hz(Notemin)
 n_bins = int((librosa.note_to_midi(Notemax) - librosa.note_to_midi(Notemin))*8)
 Chrom = np.abs(librosa.cqt(y=y, sr=sr, hop_length = 512, fmin= fmin, bins_per_octave=12*8, n_bins=n_bins))
-H, P = librosa.decompose.hpss(Chrom)
+H, P = librosa.decompose.hpss(Chrom, margin=3.0)
+R = Chrom - (H+P)
 
 import matplotlib.pyplot as plt
 plt.figure()
-plt.subplot(3, 1, 1)
+plt.subplot(4, 1, 1)
 librosa.display.specshow(librosa.amplitude_to_db(np.abs(Chrom),ref=np.max), bins_per_octave=12*8, fmin=fmin, y_axis='cqt_note', x_axis='time')
 plt.colorbar(format='%+2.0f dB')
 plt.title('Full power spectrogram')
 
-plt.subplot(3, 1, 2)
+plt.subplot(4, 1, 2)
 librosa.display.specshow(librosa.amplitude_to_db(np.abs(H),ref=np.max), bins_per_octave=12*8, fmin=fmin, y_axis='cqt_note', x_axis='time')
 plt.colorbar(format='%+2.0f dB')
 plt.title('Harmonic power spectrogram')
 
-plt.subplot(3, 1, 3)
+plt.subplot(4, 1, 3)
 librosa.display.specshow(librosa.amplitude_to_db(np.abs(P),ref=np.max), bins_per_octave=12*8, fmin=fmin, y_axis='cqt_note', x_axis='time')
 plt.colorbar(format='%+2.0f dB')
 plt.title('Percussive power spectrogram')
-plt.tight_layout()
+
+plt.subplot(4, 1, 4)
+librosa.display.specshow(librosa.amplitude_to_db(np.abs(R),ref=np.max), bins_per_octave=12*8, fmin=fmin, y_axis='cqt_note', x_axis='time')
+plt.colorbar(format='%+2.0f dB')
+plt.title('Residue power spectrogram')
+
 plt.show()
 
 
