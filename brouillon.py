@@ -16,8 +16,20 @@ import pickle
 
 import matplotlib.pyplot as plt
 import numpy as np
+from mpl_toolkits.mplot3d import Axes3D
+import mpl_toolkits.mplot3d
 
-print((2.27*440**(0.477))/440)
+import mpl_toolkits
+
+import scipy.special
+print(scipy.special.comb(3, 2))
+
+descr = 'concordanceTotale'
+print(descr[0].upper() + descr[1:])
+
+a = [0,1,2,3,4,5]
+print(len(a[1:3]))
+
 
 print(np.log(5.75/3.5)/(5.75+3.5))
 
@@ -28,17 +40,46 @@ print(librosa.note_to_hz(['G5']))
 
 import matplotlib.pyplot as plt
 import numpy as np
+from numpy import linalg as LA
+a = [1,2,3]
+print(np.power(a,5))
+
+
+
+l = [0] + [4]
+l.append(2)
+print(l)
+a = np.array([[1, 1], [2, 2], [3, 3]])
+print(np.insert(a, [0,2], 0, axis=1))
+
 x = np.arange(0,2,0.001)
-b1=1
-b2=5.75
+b1=3
+b2=200
 diss = np.exp(-b1*x)-np.exp(-b2*x)
 plt.figure()
 plt.plot(x,diss)
 plt.show()
 
 
+import matplotlib.pyplot as plt
+import numpy as np
+x = np.arange(0,2,0.001)
+diss = x*np.exp(-(1/0.23)*x)
+plt.figure()
+plt.plot(x,diss)
+plt.show()
 
-
+import matplotlib.pyplot as plt
+import numpy as np
+x = np.arange(-2,2,0.001)
+σ1, σ2, σ3 = 0.2, 0.4, 1
+def gauss(x, σ):
+    gauss = np.exp(-(np.power(x,2))/(2*σ**2))
+    return gauss
+diss1, diss2, diss3 = gauss(x,σ1), gauss(x,σ2), gauss(x,σ3)
+plt.figure()
+plt.plot(x,diss1,x,diss2,x,diss3)
+plt.show()
 
 
 

@@ -4,7 +4,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-f1, f2, f3 = 263,783,4700
+f1, f2, f3 = 263,400,4186
 y = np.arange(0,1,0.001)
 x1, x2, x3 = f1*2**np.arange(0,1,0.001),f2*2**np.arange(0,1,0.001), f3*2**np.arange(0,1,0.001)
 
@@ -19,10 +19,12 @@ d1, d2, d3 = dissonance(f1,x1), dissonance(f2,x2), dissonance(f3,x3)
 
 plt.figure()
 plt.plot(y,d1,y,d2,y,d3)
-plt.legend(['%.2f' %f1, '%.2f' %f2, '%.2f' %f3])
+plt.legend(['%.2f' %f1 +'Hz', '%.2f' %f2 +'Hz', '%.2f' %f3 +'Hz'])
 # print(x[np.argmax(diss)])
 for i in range(13):
     plt.vlines(i/12, 0, np.max(d1), linestyle='--')
+plt.xlabel('fréquence normalisée (échelle log)')
+plt.ylabel('dissonance')
 plt.show()
 
 
