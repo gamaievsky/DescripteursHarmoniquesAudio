@@ -19,18 +19,30 @@ import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
 import mpl_toolkits.mplot3d
 
-import mpl_toolkits
-
 import scipy.special
 print(scipy.special.comb(3, 2))
+
+print(help('/='))
+print(2)
+import sys
+print(sys.float_info.epsilon)
+
+help('@')
+print(round(1.4))
+
+print(1/0.002703)
 
 descr = 'concordanceTotale'
 print(descr[0].upper() + descr[1:])
 
 a = [0,1,2,3,4,5]
-print(len(a[1:3]))
+print(max(a))
+
+s = 'all'
+print(type(s))
 
 
+delOnsets_Schubert, addOnsets_Schubert= [],[2,3,4,6,7,8,10,11,12,14,15,16,18,19,20,22,23,24,26,28,30]
 print(np.log(5.75/3.5)/(5.75+3.5))
 
 import librosa
@@ -170,7 +182,6 @@ print(np.divide(h,0.5))
 if all(x>0 for x in h):
     print('c est bon')
 else: print('c est pas bon')
-
 
 print(h>0)
 
