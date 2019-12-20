@@ -22,6 +22,32 @@ import mpl_toolkits.mplot3d
 import scipy.special
 print(scipy.special.comb(3, 2))
 
+import numpy as np
+from numpy import linalg as LA
+a = np.array([1,2,3])
+print(LA.norm(a,3))
+print((1+8+27)**(1.0/3))
+print(1/6)
+
+
+import pickle
+with open('Onset_given_Schubert', 'rb') as f:
+# with open('Onset_given_2et3Notes', 'rb') as f:
+    A = pickle.load(f)
+
+self.harmonicNovelty[:,t]
+
+
+for i in range(1,4):
+    print(i)
+
+a = 1
+b = 2
+a += 0.5
+print(a,b)
+
+print(3<4)
+
 print(help('/='))
 print(2)
 import sys
@@ -36,10 +62,10 @@ descr = 'concordanceTotale'
 print(descr[0].upper() + descr[1:])
 
 a = [0,1,2,3,4,5]
-print(max(a))
+print(a[0:2])
 
 s = 'all'
-print(type(s))
+print(isinstance(s,str))
 
 
 delOnsets_Schubert, addOnsets_Schubert= [],[2,3,4,6,7,8,10,11,12,14,15,16,18,19,20,22,23,24,26,28,30]
@@ -71,6 +97,9 @@ diss = np.exp(-b1*x)-np.exp(-b2*x)
 plt.figure()
 plt.plot(x,diss)
 plt.show()
+
+import pickle
+
 
 
 import matplotlib.pyplot as plt

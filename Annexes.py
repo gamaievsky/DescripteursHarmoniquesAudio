@@ -9,7 +9,7 @@ if os.path.exists('Onset_given_'+title+'.txt'):
             l = line.split()
             onsets.append(float(l[0]))
     onset_frames = np.asarray(onsets)
-    print(isinstance(onset_frames, list))
+    print(isinstance(onset_frames, np.ndarray))
 #Avec ma méthode de visualisation
 elif os.path.exists('Onset_given_'+title):
     print('Le fichier sans format existe')

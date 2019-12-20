@@ -145,6 +145,9 @@ class SignalSepare:
         self.diffVirtualPitch = []
         self.chrom_diffRoughness = []
         self.diffRoughness = []
+        self.harmonicContext = []
+        self.chrom_harmonicNovelty = []
+        self.harmonicNovelty = []
 
 
 
@@ -304,8 +307,44 @@ class SignalSepare:
             self.n_notes = np.sum(self.activation, axis=0)
 
 
+    def HarmonicContext(self):
+        mem = params.memory_context
 
+        #Construction du context harmonique
+        self.harmonicContext = np.zeros((self.n_bins,self.n_frames))
+        self.harmonicContext[:,0] = self.chromSync[:,0]
 
+        # Memory = "full"
+        if isinstance(mem,str):
+            for t in range(1,self.n_frames):
+                self.harmonicContext[:,t] = np.fmax(self.harmonicContext[:,t-1],self.chromSync[:,t])
+        # Memory = int
+        else:
+            for t in range(1,mem+1):
+                self.harmonicContext[:,t] = np.fmax(self.harmonicContext[:,t-1],self.chromSync[:,t])
+            for t in range(mem+1,self.n_frames):
+                self.harmonicContext[:,t] = self.chromSync[:,t]
+                for m in range(0,mem):
+                    self.harmonicContext[:,t] = np.fmax(self.harmonicContext[:,t], self.chromSync[:,t-1-m])
+
+    def HarmonicNovelty(self):
+        if len(self.harmonicContext) == 0: self.HarmonicContext()
+
+        # Construction du spectre des Nouveautés harmoniques
+        self.chrom_harmonicNovelty = np.zeros((self.n_bins,self.n_frames))
+        self.chrom_harmonicNovelty[:,0] = self.chromSync[:,0]
+        for t in range(1,self.n_frames):
+            self.chrom_harmonicNovelty[:,t] = self.chromSync[:,t] - self.harmonicContext[:,t-1]
+            for i in range(self.n_bins):
+                if self.chrom_harmonicNovelty[:,t][i]<0: self.chrom_harmonicNovelty[:,t][i] = 0
+
+        # Construction des Nouveautés harmoniques
+        for t in range(self.n_frames):
+            self.harmonicNovelty.append(np.sum(np.multiply(self.chrom_harmonicNovelty[:,t], self.chrom_harmonicNovelty[:,t])))
+        if params.norm_Novelty == 'energy':
+            self.harmonicNovelty[1:(self.n_frames-1)] = np.divide(self.harmonicNovelty[1:(self.n_frames-1)], self.energy[1:(self.n_frames-1)])
+        self.harmonicNovelty[0]=0
+        self.harmonicNovelty[self.n_frames-1]=0
 
 
 
@@ -652,9 +691,6 @@ class SignalSepare:
 
 
 
-
-
-
     def ComputeDescripteurs(self, space = ['concordance','concordanceTot']):
         """Calcule les descripteurs indiqués dans 'space', puis les affiche"""
 
@@ -673,6 +709,7 @@ class SignalSepare:
         if 'diffConcordance' in space: self.DiffConcordance()
         if 'diffHarmonicity' in space: self.DiffHarmonicity()
         if 'diffRoughness' in space: self.DiffRoughness()
+        if 'harmonicNovelty' in space: self.HarmonicNovelty()
 
 
         #Plot des représentations symboliques
@@ -774,6 +811,29 @@ class SignalSepare:
             for k in range(1, self.n_pistes):
                 plt.subplot(self.n_pistes, 1, k+1, sharex=ax1)
                 librosa.display.specshow(librosa.amplitude_to_db(self.chromPistesSync[k], ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.onset_times,cmap=cmap)
+            plt.tight_layout()
+
+        #Plot du contexte
+        if params.plot_context:
+            if len(self.harmonicContext) == 0: self.HarmonicContext()
+            if len(self.chrom_harmonicNovelty) == 0: self.HarmonicNovelty()
+
+            plt.figure(8,figsize=(13, 7))
+            plt.subplot(3, 1, 1)
+            librosa.display.specshow(self.chromSyncDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times, cmap=cmap)
+            plt.title('Synchronised cqt spectrum')
+
+            plt.subplot(3, 1, 2)
+            librosa.display.specshow(librosa.amplitude_to_db(self.harmonicContext,ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times,cmap=cmap)
+            if isinstance(params.memory_context, str): title1 = 'Harmonic Context, cumulative memory'
+            else : title1 = 'Harmonic Context, memory of {} chords'.format(int(params.memory_context))
+            plt.title(title1)
+
+            plt.subplot(3, 1, 3)
+            librosa.display.specshow(librosa.amplitude_to_db(self.chrom_harmonicNovelty,ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times,cmap=cmap)
+            if isinstance(params.memory_context, str): title2 = 'Harmonic Novelties, cumulative memory'
+            else : title2 = 'Harmonic Novelties, memory of {} chords'.format(int(params.memory_context))
+            plt.title(title2)
             plt.tight_layout()
 
         #Plot des spectres simplifiés
@@ -881,6 +941,7 @@ class SignalSepare:
 
             plt.tight_layout()
 
+        #Plot descriptogramme + valeur numérique
         if params.plot_OneDescr:
             descr = space[0]
             plt.figure(7,figsize=(13, 7))
@@ -931,7 +992,7 @@ class SignalSepare:
                 # Descripteurs dynamiques
             elif len(getattr(self, descr)) == (self.n_frames-1):
                 plt.plot(self.onset_times[2:(self.n_frames-1)], getattr(self, descr)[1:(self.n_frames-2)],['b','r','g','c','m','y','b','r','g'][1]+'o', label=descr)
-                plt.hlines(getattr(self, descr)[1:(self.n_frames-2)], [t-0.25 for t in self.onset_times[2:(self.n_frames-1)]], [t+0.25 for t in self.onset_times[2:(self.n_frames-1)]], color=['b','r','g','c','m','y','b','r','g'][0], alpha=0.9, linestyle=':'  )
+                plt.hlines(getattr(self, descr)[1:(self.n_frames-2)], [t-0.25 for t in self.onset_times[2:(self.n_frames-1)]], [t+0.25 for t in self.onset_times[2:(self.n_frames-1)]], color=['b','r','g','c','m','y','b','r','g'][0], alpha=0.9, linestyle=':')
             plt.legend(frameon=True, framealpha=0.75)
             plt.tight_layout()
 
@@ -977,6 +1038,40 @@ class SignalSepare:
                 ax.set_zlabel(space[2][0].upper() + space[2][1:])
                 ax.set_title(title +' '+instrument + ' (' + space[0][0].upper() + space[0][1:] + ', ' + space[1][0].upper() + space[1][1:] + ', ' + space[2][0].upper() + space[2][1:] + ')')
 
+
+        if params.plot_compParam:
+            # Représentation des nouveautés, comparaison des échelles de mémoire
+            with open ('nouv0', 'rb') as fp:
+                nouv0 = pickle.load(fp)
+            with open ('nouv1', 'rb') as fp:
+                nouv1 = pickle.load(fp)
+            with open ('nouv2', 'rb') as fp:
+                nouv2 = pickle.load(fp)
+            with open ('nouv3', 'rb') as fp:
+                nouv3 = pickle.load(fp)
+            with open ('nouv4', 'rb') as fp:
+                nouv4 = pickle.load(fp)
+            with open ('nouvFull', 'rb') as fp:
+                nouvFull = pickle.load(fp)
+
+            plt.figure(9,figsize=(13, 7))
+            img=mpimg.imread(self.score)
+            score = plt.subplot(2,1,1)
+            plt.axis('off')
+            score.imshow(img)
+            plt.title(title +' '+instrument)
+
+            plt.subplot(2, 1, 2)
+            plt.vlines(self.onset_times[1:self.n_frames], 0, 1, color='k', alpha=0.9, linestyle='--')
+            plt.hlines(nouv0[1:(self.n_frames-1)], self.onset_times[1:(self.n_frames-1)], self.onset_times[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][2], label='Memory: 0 chord')
+            # plt.hlines(nouv1[1:(self.n_frames-1)], self.onset_times[1:(self.n_frames-1)], self.onset_times[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][3], label='Memory: 1 chord')
+            # plt.hlines(nouv2[1:(self.n_frames-1)], self.onset_times[1:(self.n_frames-1)], self.onset_times[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][4], label='Memory: 2 chords')
+            plt.hlines(nouv3[1:(self.n_frames-1)], self.onset_times[1:(self.n_frames-1)], self.onset_times[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][5], label='Memory: 3 chords')
+            # plt.hlines(nouv4[1:(self.n_frames-1)], self.onset_times[1:(self.n_frames-1)], self.onset_times[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][6], label='Memory: 4 chords')
+            plt.hlines(nouvFull[1:(self.n_frames-1)], self.onset_times[1:(self.n_frames-1)], self.onset_times[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][1], label='Memory: All chords')
+
+            plt.legend(frameon=True, framealpha=0.75)
+            plt.tight_layout()
 
         plt.show()
 
@@ -1025,8 +1120,8 @@ class SignalSepare:
 
 
 
-title = 'PurcellRecord'
-instrument = 'Piano'
+title = 'SchubertRecord'
+instrument = 'Quartet'
 #Palestrina, PalestrinaM, SuiteAccords, AccordsParalleles, 'SuiteAccordsOrgue', 'SuiteAccordsPiano', 'CadenceM','CadenceM2','AccordsM', 'SuiteAccordsViolin', Schubert
 y, sr = librosa.load('Exemples/'+title+'.wav')
 # y1, sr = librosa.load('Exemples/'+title+'-Basse.wav')
@@ -1048,46 +1143,52 @@ if params.SemiManual:
 Notemin = 'E2' #'SuiteAccordsOrgue': A2, #Purcell : C2, #Schubert : E2, PurcellRecord : C1
 Notemax = 'D9'
 # score = 'Exemples/'+ title +'-score.png'
-score = 'Exemples/Purcell-score.png'
+score = 'Exemples/Schubert-score.png'
 
 
 
 #Chargement de onset_frames
-#Avec Sonic Visualiser
-if os.path.exists('Onset_given_'+title+'.txt'):
-    onsets = []
-    with open('Onset_given_'+title+'.txt','r') as f:
-        for line in f:
-            l = line.split()
-            onsets.append(float(l[0]))
-    onset_times = np.asarray(onsets)
-    onset_frames = librosa.time_to_frames(onset_times, sr=sr, hop_length = STEP)
 
-#Avec ma méthode de visualisation
-elif os.path.exists('Onset_given_'+title):
-    print('No')
-    with open('Onset_given_'+title, 'rb') as f:
-    # with open('Onset_given_2et3Notes', 'rb') as f:
-        onset_frames = pickle.load(f)
-else: onset_frames = []
+def OpenFrames():
+    #Avec Sonic Visualiser
+    if os.path.exists('Onset_given_'+title+'.txt'):
+        onsets = []
+        with open('Onset_given_'+title+'.txt','r') as f:
+            for line in f:
+                l = line.split()
+                onsets.append(float(l[0]))
+        onset_times = np.asarray(onsets)
+        onset_frames = librosa.time_to_frames(onset_times, sr=sr, hop_length = STEP)
 
+    #Avec ma méthode de visualisation
+    elif os.path.exists('Onset_given_'+title):
+        print('No')
+        with open('Onset_given_'+title, 'rb') as f:
+        # with open('Onset_given_2et3Notes', 'rb') as f:
+            onset_frames = pickle.load(f)
+    else: onset_frames = []
+    return onset_frames
 
-
-# with open('Onset_given_'+title, 'rb') as f:
-# # with open('Onset_given_2et3Notes', 'rb') as f:
-#     onset_frames = pickle.load(f)
-
+onset_frames = OpenFrames()
 S = SignalSepare(y, sr, [], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score, instrument)
 S.DetectionOnsets()
 # with open('Onset_given_'+title, 'wb') as g:
 #      pickle.dump(S.onset_frames, g)
-space = ['harmonicChange','diffConcordance']
+space = ['harmonicNovelty']
 #'roughness', 'harmonicity','concordance','concordance3','concordanceTot','harmonicChange','diffConcordance','crossConcordance','crossConcordanceTot'
 S.Clustering()
 if params.spectrRug_Simpl: S.SimplifySpectrum()
+S.HarmonicContext()
 S.ComputeDescripteurs(space = space)
 S.Affichage(space = space, end = 10)
 # S.Sort(space = space)
+
+# with open('nouv4', 'wb') as g:
+#     pickle.dump(S.harmonicNovelty, g)
+
+
+
+
 
 #Nmin = int(S.sr/(S.fmax*(2**(1/BINS_PER_OCTAVE)-1)))
 #Nmax = int((S.sr/(S.fmin*(2**(1/BINS_PER_OCTAVE)-1))))

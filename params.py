@@ -78,19 +78,26 @@ norm_harmChange = 'general' # 'None', 'frame_by_frame', 'general'
 norm_diffConc = 'chord_by_chord' # 'note_by_note', 'chord_by_chord', ('frame-by-frame')
 norm_harmonicity = 2 # La puissance dans le calcul de l'harmonicité. 1 : amplitude, 2 : énergie
 norm_diffRug = 'energy'
+memory_size = 4 # "full", int # entier n>=1, auquel cas la mémoire ne dure que n+1 accords
+memory_type = 'max','mean'
+memory_ponderation = 1
+norm_context = 'None'
+norm_Novelty = 'energy' # 'None', 'energy'
 
 
 #PLOT
 plot_onsets = False
 plot_pistes = False
 plot_partiels = False
+plot_context = False
 plot_decompo_hpss = False
 plot_chromDescr = False
-plot_descr = True
+plot_descr = False
 plot_OneDescr = False
 plot_abstr = False
 plot_symb = False
 plot_sorted = False
+plot_compParam = True
 sorted_reverse = False
 play = False
 
