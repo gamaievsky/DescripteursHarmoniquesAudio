@@ -145,9 +145,19 @@ class SignalSepare:
         self.diffVirtualPitch = []
         self.chrom_diffRoughness = []
         self.diffRoughness = []
-        self.harmonicContext = []
+        self.context = []
+        self.energyContext = []
         self.chrom_harmonicNovelty = []
         self.harmonicNovelty = []
+        self.harmonicityContext = []
+        self.virtualPitchContext = []
+        self.roughnessContext = []
+        self.chrom_roughnessContext = []
+        self.concordanceCrossContext = []
+        self.chrom_concordanceCrossContext = []
+        self.roughnessCrossContext = []
+        self.chrom_roughnessCrossContext = []
+
 
 
 
@@ -253,10 +263,8 @@ class SignalSepare:
         self.chromSyncDB = librosa.amplitude_to_db(self.chromSync, ref=np.max)
 
         #Calcul de l'énergie
-        for j in range(self.n_frames):
-            self.energy.append(np.sum(np.multiply(self.chromSync[:,j], self.chromSync[:,j])))
-
-
+        for t in range(self.n_frames):
+            self.energy.append(np.sum(np.multiply(self.chromSync[:,t], self.chromSync[:,t])))
 
 
     def Clustering(self):
@@ -307,34 +315,54 @@ class SignalSepare:
             self.n_notes = np.sum(self.activation, axis=0)
 
 
-    def HarmonicContext(self):
-        mem = params.memory_context
+    def Context(self):
+        mem = params.memory_size
 
         #Construction du context harmonique
-        self.harmonicContext = np.zeros((self.n_bins,self.n_frames))
-        self.harmonicContext[:,0] = self.chromSync[:,0]
+        self.context = np.zeros((self.n_bins,self.n_frames))
+        self.context[:,0] = self.chromSync[:,0]
 
         # Memory = "full"
         if isinstance(mem,str):
-            for t in range(1,self.n_frames):
-                self.harmonicContext[:,t] = np.fmax(self.harmonicContext[:,t-1],self.chromSync[:,t])
+            if params.memory_type == 'max':
+                for t in range(1,self.n_frames):
+                    self.context[:,t] = np.fmax(self.context[:,t-1],self.chromSync[:,t])
+            elif params.memory_type == 'mean':
+                #Construction du vecteur de pondération
+                weights = [(1/i**params.memory_decr_ponderation) for i in range(1,self.n_frames+2)]
+                #Moyennage
+                for t in range(1,self.n_frames):
+                    self.context[:,t] = np.average(self.chromSync[:,:(t+1)], axis=1, weights=[weights[t-i] for i in range(t+1)])
+
         # Memory = int
-        else:
-            for t in range(1,mem+1):
-                self.harmonicContext[:,t] = np.fmax(self.harmonicContext[:,t-1],self.chromSync[:,t])
-            for t in range(mem+1,self.n_frames):
-                self.harmonicContext[:,t] = self.chromSync[:,t]
-                for m in range(0,mem):
-                    self.harmonicContext[:,t] = np.fmax(self.harmonicContext[:,t], self.chromSync[:,t-1-m])
+        elif isinstance(mem,int):
+            if params.memory_type == 'max':
+                for t in range(1,mem+1):
+                    self.context[:,t] = np.fmax(self.chromSync[:,t], self.context[:,t-1])
+                for t in range(mem+1,self.n_frames):
+                    self.context[:,t] = np.amax(self.chromSync[:,(t-mem):(t+1)], axis = 1)
+            elif params.memory_type == 'mean':
+                #Construction du vecteur de pondération
+                weights = [(1/i**params.memory_decr_ponderation) for i in range(1,mem+2)]
+                #Moyennage
+                for t in range(1,mem+1):
+                    self.context[:,t] = np.average(self.chromSync[:,:(t+1)], axis=1, weights=[weights[t-i] for i in range(t+1)])
+                for t in range(mem+1,self.n_frames):
+                    self.context[:,t] = np.average(self.chromSync[:,(t-mem):(t+1)], axis=1, weights=[weights[mem-i] for i in range(mem+1)])
+
+        #Calcul de l'énergie du contexte
+        for t in range(self.n_frames):
+            self.energyContext.append(np.sum(np.multiply(self.context[:,t], self.context[:,t])))
+
 
     def HarmonicNovelty(self):
-        if len(self.harmonicContext) == 0: self.HarmonicContext()
+        if len(self.context) == 0: self.context()
 
         # Construction du spectre des Nouveautés harmoniques
         self.chrom_harmonicNovelty = np.zeros((self.n_bins,self.n_frames))
         self.chrom_harmonicNovelty[:,0] = self.chromSync[:,0]
         for t in range(1,self.n_frames):
-            self.chrom_harmonicNovelty[:,t] = self.chromSync[:,t] - self.harmonicContext[:,t-1]
+            self.chrom_harmonicNovelty[:,t] = self.chromSync[:,t] - self.context[:,t-1]
             for i in range(self.n_bins):
                 if self.chrom_harmonicNovelty[:,t][i]<0: self.chrom_harmonicNovelty[:,t][i] = 0
 
@@ -345,7 +373,6 @@ class SignalSepare:
             self.harmonicNovelty[1:(self.n_frames-1)] = np.divide(self.harmonicNovelty[1:(self.n_frames-1)], self.energy[1:(self.n_frames-1)])
         self.harmonicNovelty[0]=0
         self.harmonicNovelty[self.n_frames-1]=0
-
 
 
     def SimplifySpectrum(self):
@@ -446,6 +473,7 @@ class SignalSepare:
                 freq.sort()
                 s = 0.44*(np.log(params.β2/params.β1)/(params.β2-params.β1))*(freq[1]-freq[0])/(freq[0]**(0.477))
                 rug = np.exp(-params.β1*s)-np.exp(-params.β2*s)
+
                 for p1 in range(self.n_pistes-1):
                     for p2 in range(p1+1, self.n_pistes):
                         if params.spectrRug_Simpl:
@@ -668,10 +696,9 @@ class SignalSepare:
 
 
     def DiffRoughness(self):
-
         self.chrom_diffRoughness = np.zeros((self.n_bins,self.n_frames-1))
-        for b1 in range(self.n_bins-1):
-            for b2 in range(b1+1,self.n_bins):
+        for b1 in range(self.n_bins):
+            for b2 in range(self.n_bins):
                 f1 = self.fmin*2**(b1/BINS_PER_OCTAVE)
                 f2 = self.fmin*2**(b2/BINS_PER_OCTAVE)
                 freq = [f1, f2]
@@ -686,6 +713,82 @@ class SignalSepare:
         for t in range(self.n_frames-1):
             self.chrom_diffRoughness[:,t] = np.divide(self.chrom_diffRoughness[:,t], np.sqrt(self.energy[t]*self.energy[t+1]))
         self.diffRoughness = self.chrom_diffRoughness.sum(axis=0)
+
+
+    def HarmonicityContext(self):
+        # Construction du spectre harmonique
+        dec = BINS_PER_OCTAVE/6 # décalage d'un ton pour tenir compte de l'épaisseur des gaussiennes
+        epaiss = int(np.rint(BINS_PER_OCTAVE/(2*params.σ)))
+        SpecHarm = np.zeros(2*int(dec) + int(np.rint(BINS_PER_OCTAVE * np.log2(params.κ))))
+        for k in range(params.κ):
+            pic =  int(dec + np.rint(BINS_PER_OCTAVE * np.log2(k+1)))
+            for i in range(-epaiss, epaiss+1):
+                SpecHarm[pic + i] = 1/(k+1)**params.decr
+
+        # Correlation avec le spectre réel
+        for t in range(self.n_frames):
+            self.harmonicityContext.append(max(np.correlate(np.power(self.context[:,t],params.norm_harmonicity), SpecHarm,"full")) / LA.norm(self.context[:,t], ord = params.norm_harmonicity)**(params.norm_harmonicity))
+
+            # Virtual Pitch
+            self.virtualPitchContext.append(np.argmax(np.correlate(np.power(self.context[:,t],params.norm_harmonicity), SpecHarm,"full")))
+
+        diffVirtualNotes = librosa.hz_to_note([self.fmin * (2**((i-len(SpecHarm)+dec+1)/BINS_PER_OCTAVE)) for i in self.virtualPitchContext] , cents = False)
+        print(diffVirtualNotes[1:self.n_frames-1])
+
+
+    def RoughnessContext(self):
+        self.chrom_roughnessContext = np.zeros((self.n_bins,self.n_frames))
+        for b1 in range(self.n_bins-1):
+            for b2 in range(b1+1,self.n_bins):
+                f1 = self.fmin*2**(b1/BINS_PER_OCTAVE)
+                f2 = self.fmin*2**(b2/BINS_PER_OCTAVE)
+                freq = [f1, f2]
+                freq.sort()
+                s = 0.44*(np.log(params.β2/params.β1)/(params.β2-params.β1))*(freq[1]-freq[0])/(freq[0]**(0.477))
+                rug = np.exp(-params.β1*s)-np.exp(-params.β2*s)
+
+                for t in range(self.n_frames):
+                    self.chrom_roughnessContext[b1,t] += (self.context[b1,t] * self.context[b2,t]) * rug / 2
+                    self.chrom_roughnessContext[b2,t] += (self.context[b1,t] * self.context[b2,t]) * rug / 2
+
+        for t in range(self.n_frames-1):
+            self.chrom_roughnessContext[:,t] = np.divide(self.chrom_roughnessContext[:,t], self.energyContext[t])
+        self.roughnessContext = self.chrom_roughnessContext.sum(axis=0)
+
+
+    def ConcordanceCrossContext(self):
+        self.chrom_concordanceCrossContext = np.zeros((self.n_bins,self.n_frames-1))
+        if params.norm_concCrossContext == 'chord_by_chord':
+            for t in range(self.n_frames-1):
+                self.chrom_concordanceCrossContext[:,t] = np.multiply(self.context[:,t], self.chromSync[:,t+1])
+                self.chrom_concordanceCrossContext[:,t] = np.divide(self.chrom_concordanceCrossContext[:,t], np.sqrt(self.energyContext[t] * self.energy[t+1]))
+                # if self.n_notes[t] * self.n_notes[t+1] >= 1:
+                #     self.chrom_concordanceCrossContext[:,t] = self.chrom_concordanceCrossContext[:,t]/(self.n_notes[t]*self.n_notes[t+1])
+
+        self.concordanceCrossContext = self.chrom_concordanceCrossContext.sum(axis=0)
+        self.concordanceCrossContext[0]=0
+        self.concordanceCrossContext[self.n_frames-2]=0
+
+
+    def RoughnessCrossContext(self):
+        self.chrom_roughnessCrossContext = np.zeros((self.n_bins,self.n_frames-1))
+        for b1 in range(self.n_bins):
+            for b2 in range(self.n_bins):
+                f1 = self.fmin*2**(b1/BINS_PER_OCTAVE)
+                f2 = self.fmin*2**(b2/BINS_PER_OCTAVE)
+                freq = [f1, f2]
+                freq.sort()
+                s = 0.44*(np.log(params.β2/params.β1)/(params.β2-params.β1))*(freq[1]-freq[0])/(freq[0]**(0.477))
+                rug = np.exp(-params.β1*s)-np.exp(-params.β2*s)
+
+                for t in range(self.n_frames-1):
+                    self.chrom_roughnessCrossContext[b1,t] += (self.context[b1,t] * self.chromSync[b2,t+1]) * rug / 2
+                    self.chrom_roughnessCrossContext[b2,t] += (self.context[b1,t] * self.chromSync[b2,t+1]) * rug / 2
+
+        for t in range(self.n_frames-1):
+            self.chrom_roughnessCrossContext[:,t] = np.divide(self.chrom_roughnessCrossContext[:,t], np.sqrt(self.energyContext[t]*self.energy[t+1]))
+        self.roughnessCrossContext = self.chrom_roughnessCrossContext.sum(axis=0)
+
 
 
 
@@ -710,6 +813,11 @@ class SignalSepare:
         if 'diffHarmonicity' in space: self.DiffHarmonicity()
         if 'diffRoughness' in space: self.DiffRoughness()
         if 'harmonicNovelty' in space: self.HarmonicNovelty()
+        if 'harmonicityContext' in space: self.HarmonicityContext()
+        if 'roughnessContext' in space: self.RoughnessContext()
+        if 'concordanceCrossContext' in space: self.ConcordanceCrossContext()
+        if 'roughnessCrossContext' in space: self.RoughnessCrossContext()
+
 
 
         #Plot des représentations symboliques
@@ -815,7 +923,7 @@ class SignalSepare:
 
         #Plot du contexte
         if params.plot_context:
-            if len(self.harmonicContext) == 0: self.HarmonicContext()
+            if len(self.context) == 0: self.context()
             if len(self.chrom_harmonicNovelty) == 0: self.HarmonicNovelty()
 
             plt.figure(8,figsize=(13, 7))
@@ -824,15 +932,15 @@ class SignalSepare:
             plt.title('Synchronised cqt spectrum')
 
             plt.subplot(3, 1, 2)
-            librosa.display.specshow(librosa.amplitude_to_db(self.harmonicContext,ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times,cmap=cmap)
-            if isinstance(params.memory_context, str): title1 = 'Harmonic Context, cumulative memory'
-            else : title1 = 'Harmonic Context, memory of {} chords'.format(int(params.memory_context))
+            librosa.display.specshow(librosa.amplitude_to_db(self.context,ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times,cmap=cmap)
+            if isinstance(params.memory_size, str): title1 = 'Harmonic Context, cumulative memory'
+            else : title1 = 'Harmonic Context, memory of {} chords'.format(int(params.memory_size))
             plt.title(title1)
 
             plt.subplot(3, 1, 3)
             librosa.display.specshow(librosa.amplitude_to_db(self.chrom_harmonicNovelty,ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times,cmap=cmap)
-            if isinstance(params.memory_context, str): title2 = 'Harmonic Novelties, cumulative memory'
-            else : title2 = 'Harmonic Novelties, memory of {} chords'.format(int(params.memory_context))
+            if isinstance(params.memory_size, str): title2 = 'Harmonic Novelties, cumulative memory'
+            else : title2 = 'Harmonic Novelties, memory of {} chords'.format(int(params.memory_size))
             plt.title(title2)
             plt.tight_layout()
 
@@ -923,7 +1031,7 @@ class SignalSepare:
                 if (k==0) & params.plot_score & (len(self.score)!=0):
                     ax1 = plt.subplot(dim+1,1,2)
                 else: plt.subplot(dim+1, 1, k+2, sharex=ax1)
-                #Je remplace les valeurs nan par 0
+                # Je remplace les valeurs nan par 0
                 for i,val in enumerate(getattr(self,descr)):
                     if np.isnan(val): getattr(self,descr)[i] = 0
                 plt.vlines(self.onset_times[1:self.n_frames], min(getattr(self, descr)), max(getattr(self, descr)[1:(self.n_frames-1)]), color='k', alpha=0.9, linestyle='--')
@@ -932,7 +1040,13 @@ class SignalSepare:
 
                 # Descripteurs statiques
                 if len(getattr(self, descr)) == self.n_frames:
-                    plt.hlines(getattr(self, descr)[1:(self.n_frames-1)], self.onset_times[1:(self.n_frames-1)], self.onset_times[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][k], label=descr[0].upper() + descr[1:])
+                    type = ''
+                    if descr in ['harmonicNovelty', 'harmonicityContext','roughnessContext'] :
+                        decrem = ''
+                        if params.memory_type == 'mean': decrem = '\nDecr {}'.format(params.memory_decr_ponderation)
+                        if isinstance(params.memory_size, str): type = '\nType : ' + params.memory_type + ', full' + decrem
+                        else: type ='\nType : ' + params.memory_type + ', {} chords'.format(int(params.memory_size)) + decrem
+                    plt.hlines(getattr(self, descr)[1:(self.n_frames-1)], self.onset_times[1:(self.n_frames-1)], self.onset_times[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][k], label=descr[0].upper() + descr[1:] + type)
                 # Descripteurs dynamiques
                 elif len(getattr(self, descr)) == (self.n_frames-1):
                     plt.plot(self.onset_times[2:(self.n_frames-1)], getattr(self, descr)[1:(self.n_frames-2)],['b','r','g','c','m','y','b','r','g'][k]+'o', label=(descr[0].upper() + descr[1:]))
@@ -1073,6 +1187,7 @@ class SignalSepare:
             plt.legend(frameon=True, framealpha=0.75)
             plt.tight_layout()
 
+
         plt.show()
 
         # if os.path.exists('liste1v'):
@@ -1174,11 +1289,11 @@ S = SignalSepare(y, sr, [], Notemin, Notemax,onset_frames, delOnsets, addOnsets,
 S.DetectionOnsets()
 # with open('Onset_given_'+title, 'wb') as g:
 #      pickle.dump(S.onset_frames, g)
-space = ['harmonicNovelty']
+space = ['harmonicity','harmonicityContext']
 #'roughness', 'harmonicity','concordance','concordance3','concordanceTot','harmonicChange','diffConcordance','crossConcordance','crossConcordanceTot'
 S.Clustering()
 if params.spectrRug_Simpl: S.SimplifySpectrum()
-S.HarmonicContext()
+S.Context()
 S.ComputeDescripteurs(space = space)
 S.Affichage(space = space, end = 10)
 # S.Sort(space = space)
