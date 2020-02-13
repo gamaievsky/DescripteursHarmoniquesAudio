@@ -141,10 +141,6 @@ class SignalSepare:
         self.diffConcordance = []
         self.harmonicity = []
         self.virtualPitch = []
-        self.diffHarmonicity = []
-        self.diffVirtualPitch = []
-        self.chrom_diffRoughness = []
-        self.diffRoughness = []
         self.context = []
         self.energyContext = []
         self.chrom_harmonicNovelty = []
@@ -153,10 +149,10 @@ class SignalSepare:
         self.virtualPitchContext = []
         self.roughnessContext = []
         self.chrom_roughnessContext = []
-        self.concordanceCrossContext = []
-        self.chrom_concordanceCrossContext = []
-        self.roughnessCrossContext = []
-        self.chrom_roughnessCrossContext = []
+        self.diffConcordanceContext = []
+        self.chrom_diffConcordanceContext = []
+        self.diffRoughnessContext = []
+        self.chrom_diffRoughnessContext = []
 
 
 
@@ -354,25 +350,6 @@ class SignalSepare:
         for t in range(self.n_frames):
             self.energyContext.append(np.sum(np.multiply(self.context[:,t], self.context[:,t])))
 
-
-    def HarmonicNovelty(self):
-        if len(self.context) == 0: self.context()
-
-        # Construction du spectre des Nouveautés harmoniques
-        self.chrom_harmonicNovelty = np.zeros((self.n_bins,self.n_frames))
-        self.chrom_harmonicNovelty[:,0] = self.chromSync[:,0]
-        for t in range(1,self.n_frames):
-            self.chrom_harmonicNovelty[:,t] = self.chromSync[:,t] - self.context[:,t-1]
-            for i in range(self.n_bins):
-                if self.chrom_harmonicNovelty[:,t][i]<0: self.chrom_harmonicNovelty[:,t][i] = 0
-
-        # Construction des Nouveautés harmoniques
-        for t in range(self.n_frames):
-            self.harmonicNovelty.append(np.sum(np.multiply(self.chrom_harmonicNovelty[:,t], self.chrom_harmonicNovelty[:,t])))
-        if params.norm_Novelty == 'energy':
-            self.harmonicNovelty[1:(self.n_frames-1)] = np.divide(self.harmonicNovelty[1:(self.n_frames-1)], self.energy[1:(self.n_frames-1)])
-        self.harmonicNovelty[0]=0
-        self.harmonicNovelty[self.n_frames-1]=0
 
 
     def SimplifySpectrum(self):
@@ -632,6 +609,30 @@ class SignalSepare:
         self.harmonicChange[self.n_frames-2]=0
 
 
+    def HarmonicNovelty(self):
+        if len(self.context) == 0: self.context()
+
+        # Construction du spectre des Nouveautés harmoniques
+        self.chrom_harmonicNovelty = np.zeros((self.n_bins,self.n_frames))
+        self.chrom_harmonicNovelty[:,1] = self.chromSync[:,1]
+        for t in range(2,self.n_frames):
+            self.chrom_harmonicNovelty[:,t] = self.chromSync[:,t] - self.context[:,t-1]
+            for i in range(self.n_bins):
+                if self.chrom_harmonicNovelty[:,t][i]<0: self.chrom_harmonicNovelty[:,t][i] = 0
+
+        # Construction des Nouveautés harmoniques
+        for t in range(self.n_frames):
+            self.harmonicNovelty.append(np.sum(np.multiply(self.chrom_harmonicNovelty[:,t], self.chrom_harmonicNovelty[:,t])))
+        if params.norm_Novelty == 'energy':
+            self.harmonicNovelty[1:(self.n_frames-1)] = np.divide(self.harmonicNovelty[1:(self.n_frames-1)], self.energy[1:(self.n_frames-1)])
+        self.harmonicNovelty[0]=0
+        self.harmonicNovelty[self.n_frames-1]=0
+
+        if params.type_Novelty == 'dyn':
+            self.harmonicNovelty.pop(0)
+
+
+
     def DiffConcordance(self):
         self.chrom_diffConcordance = np.zeros((self.n_bins,self.n_frames-1))
         if params.norm_diffConc == 'chord_by_chord':
@@ -672,47 +673,6 @@ class SignalSepare:
 
         virtualNotes = librosa.hz_to_note([self.fmin * (2**((i-len(SpecHarm)+dec+1)/BINS_PER_OCTAVE)) for i in self.virtualPitch] , cents = False)
         print(virtualNotes[1:self.n_frames-1])
-
-
-    def DiffHarmonicity(self):
-        # Construction du spectre harmonique
-        dec = BINS_PER_OCTAVE/6 # décalage d'un ton pour tenir compte de l'épaisseur des gaussiennes
-        epaiss = int(np.rint(BINS_PER_OCTAVE/(2*params.σ)))
-        SpecHarm = np.zeros(2*int(dec) + int(np.rint(BINS_PER_OCTAVE * np.log2(params.κ))))
-        for k in range(params.κ):
-            pic =  int(dec + np.rint(BINS_PER_OCTAVE * np.log2(k+1)))
-            for i in range(-epaiss, epaiss+1):
-                SpecHarm[pic + i] = 1/(k+1)**params.decr
-
-        # Correlation avec le spectre réel
-        for t in range(self.n_frames-1):
-            self.diffHarmonicity.append(max(np.correlate(np.power(self.chromSync[:,t]+self.chromSync[:,t+1],params.norm_harmonicity), SpecHarm,"full")) / LA.norm(self.chromSync[:,t] + self.chromSync[:,t+1], ord = params.norm_harmonicity)**(params.norm_harmonicity))
-
-            # Virtual Pitch
-            self.diffVirtualPitch.append(np.argmax(np.correlate(np.power(self.chromSync[:,t]+self.chromSync[:,t+1],params.norm_harmonicity), SpecHarm,"full")))
-
-        diffVirtualNotes = librosa.hz_to_note([self.fmin * (2**((i-len(SpecHarm)+dec+1)/BINS_PER_OCTAVE)) for i in self.diffVirtualPitch] , cents = False)
-        print(diffVirtualNotes[1:self.n_frames-1])
-
-
-    def DiffRoughness(self):
-        self.chrom_diffRoughness = np.zeros((self.n_bins,self.n_frames-1))
-        for b1 in range(self.n_bins):
-            for b2 in range(self.n_bins):
-                f1 = self.fmin*2**(b1/BINS_PER_OCTAVE)
-                f2 = self.fmin*2**(b2/BINS_PER_OCTAVE)
-                freq = [f1, f2]
-                freq.sort()
-                s = 0.44*(np.log(params.β2/params.β1)/(params.β2-params.β1))*(freq[1]-freq[0])/(freq[0]**(0.477))
-                rug = np.exp(-params.β1*s)-np.exp(-params.β2*s)
-
-                for t in range(self.n_frames-1):
-                    self.chrom_diffRoughness[b1,t] += (self.chromSync[b1,t] * self.chromSync[b2,t+1]) * rug / 2
-                    self.chrom_diffRoughness[b2,t] += (self.chromSync[b1,t] * self.chromSync[b2,t+1]) * rug / 2
-
-        for t in range(self.n_frames-1):
-            self.chrom_diffRoughness[:,t] = np.divide(self.chrom_diffRoughness[:,t], np.sqrt(self.energy[t]*self.energy[t+1]))
-        self.diffRoughness = self.chrom_diffRoughness.sum(axis=0)
 
 
     def HarmonicityContext(self):
@@ -756,22 +716,22 @@ class SignalSepare:
         self.roughnessContext = self.chrom_roughnessContext.sum(axis=0)
 
 
-    def ConcordanceCrossContext(self):
-        self.chrom_concordanceCrossContext = np.zeros((self.n_bins,self.n_frames-1))
+    def DiffConcordanceContext(self):
+        self.chrom_diffConcordanceContext = np.zeros((self.n_bins,self.n_frames-1))
         if params.norm_concCrossContext == 'chord_by_chord':
             for t in range(self.n_frames-1):
-                self.chrom_concordanceCrossContext[:,t] = np.multiply(self.context[:,t], self.chromSync[:,t+1])
-                self.chrom_concordanceCrossContext[:,t] = np.divide(self.chrom_concordanceCrossContext[:,t], np.sqrt(self.energyContext[t] * self.energy[t+1]))
+                self.chrom_diffConcordanceContext[:,t] = np.multiply(self.context[:,t], self.chromSync[:,t+1])
+                self.chrom_diffConcordanceContext[:,t] = np.divide(self.chrom_diffConcordanceContext[:,t], np.sqrt(self.energyContext[t] * self.energy[t+1]))
                 # if self.n_notes[t] * self.n_notes[t+1] >= 1:
-                #     self.chrom_concordanceCrossContext[:,t] = self.chrom_concordanceCrossContext[:,t]/(self.n_notes[t]*self.n_notes[t+1])
+                #     self.chrom_diffConcordanceContext[:,t] = self.chrom_diffConcordanceContext[:,t]/(self.n_notes[t]*self.n_notes[t+1])
 
-        self.concordanceCrossContext = self.chrom_concordanceCrossContext.sum(axis=0)
-        self.concordanceCrossContext[0]=0
-        self.concordanceCrossContext[self.n_frames-2]=0
+        self.diffConcordanceContext = self.chrom_diffConcordanceContext.sum(axis=0)
+        self.diffConcordanceContext[0]=0
+        self.diffConcordanceContext[self.n_frames-2]=0
 
 
-    def RoughnessCrossContext(self):
-        self.chrom_roughnessCrossContext = np.zeros((self.n_bins,self.n_frames-1))
+    def DiffRoughnessContext(self):
+        self.chrom_diffRoughnessContext = np.zeros((self.n_bins,self.n_frames-1))
         for b1 in range(self.n_bins):
             for b2 in range(self.n_bins):
                 f1 = self.fmin*2**(b1/BINS_PER_OCTAVE)
@@ -782,12 +742,12 @@ class SignalSepare:
                 rug = np.exp(-params.β1*s)-np.exp(-params.β2*s)
 
                 for t in range(self.n_frames-1):
-                    self.chrom_roughnessCrossContext[b1,t] += (self.context[b1,t] * self.chromSync[b2,t+1]) * rug / 2
-                    self.chrom_roughnessCrossContext[b2,t] += (self.context[b1,t] * self.chromSync[b2,t+1]) * rug / 2
+                    self.chrom_diffRoughnessContext[b1,t] += (self.context[b1,t] * self.chromSync[b2,t+1]) * rug / 2
+                    self.chrom_diffRoughnessContext[b2,t] += (self.context[b1,t] * self.chromSync[b2,t+1]) * rug / 2
 
         for t in range(self.n_frames-1):
-            self.chrom_roughnessCrossContext[:,t] = np.divide(self.chrom_roughnessCrossContext[:,t], np.sqrt(self.energyContext[t]*self.energy[t+1]))
-        self.roughnessCrossContext = self.chrom_roughnessCrossContext.sum(axis=0)
+            self.chrom_diffRoughnessContext[:,t] = np.divide(self.chrom_diffRoughnessContext[:,t], np.sqrt(self.energyContext[t]*self.energy[t+1]))
+        self.diffRoughnessContext = self.chrom_diffRoughnessContext.sum(axis=0)
 
 
 
@@ -804,19 +764,17 @@ class SignalSepare:
         if 'tension' in space: self.Tension()
         if 'roughness' in space: self.Roughness()
         if 'tensionSignal' in space: self.TensionSignal()
-        if 'roughnessSignal' in space: self.roughnessSignal()
+        if 'roughnessSignal' in space: self.RoughnessSignal()
         if 'harmonicity' in space: self.Harmonicity()
         if 'crossConcordance' in space: self.CrossConcordance()
         if 'crossConcordanceTot' in space: self.CrossConcordanceTot()
         if 'harmonicChange' in space: self.HarmonicChange()
         if 'diffConcordance' in space: self.DiffConcordance()
-        if 'diffHarmonicity' in space: self.DiffHarmonicity()
-        if 'diffRoughness' in space: self.DiffRoughness()
         if 'harmonicNovelty' in space: self.HarmonicNovelty()
         if 'harmonicityContext' in space: self.HarmonicityContext()
         if 'roughnessContext' in space: self.RoughnessContext()
-        if 'concordanceCrossContext' in space: self.ConcordanceCrossContext()
-        if 'roughnessCrossContext' in space: self.RoughnessCrossContext()
+        if 'diffConcordanceContext' in space: self.DiffConcordanceContext()
+        if 'diffRoughnessContext' in space: self.DiffRoughnessContext()
 
 
 
@@ -1041,7 +999,7 @@ class SignalSepare:
                 # Descripteurs statiques
                 if len(getattr(self, descr)) == self.n_frames:
                     type = ''
-                    if descr in ['harmonicNovelty', 'harmonicityContext','roughnessContext'] :
+                    if descr in ['harmonicNovelty', 'harmonicityContext','roughnessContext','diffConcordanceContext','diffRoughnessContext'] :
                         decrem = ''
                         if params.memory_type == 'mean': decrem = '\nDecr {}'.format(params.memory_decr_ponderation)
                         if isinstance(params.memory_size, str): type = '\nType : ' + params.memory_type + ', full' + decrem
@@ -1115,7 +1073,7 @@ class SignalSepare:
             if len(space)==2 :
                 color = params.color_abstr
                 l1 = getattr(self, space[0])[1:len(getattr(self, space[0]))-1]
-                l2 = getattr(self, space[1])[1:len(getattr(self, space[0]))-1]
+                l2 = getattr(self, space[1])[1:len(getattr(self, space[1]))-1]
 
                 #Si un descripteur statique et un descripteur dynamique
                 if len(l1)<len(l2) : l2.pop(0)
@@ -1235,14 +1193,20 @@ class SignalSepare:
 
 
 
-title = 'SchubertRecord'
-instrument = 'Quartet'
+title = 'CadenceM2_T11'
+instrument = 'Organ'
 #Palestrina, PalestrinaM, SuiteAccords, AccordsParalleles, 'SuiteAccordsOrgue', 'SuiteAccordsPiano', 'CadenceM','CadenceM2','AccordsM', 'SuiteAccordsViolin', Schubert
-y, sr = librosa.load('Exemples/'+title+'.wav')
+# y, sr = librosa.load('Exemples/'+title+'.wav')
 # y1, sr = librosa.load('Exemples/'+title+'-Basse.wav')
 # y2, sr = librosa.load('Exemples/'+title+'-Alto.wav')
 # y3, sr = librosa.load('Exemples/'+title+'-Soprano.wav')
 # y4, sr = librosa.load('Exemples/'+title+'-Tenor.wav')
+y, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'.wav')
+y1, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Basse.wav')
+y2, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Alto.wav')
+y3, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Soprano.wav')
+y4, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Tenor.wav')
+
 delOnsets = []
 addOnsets = []
 if params.SemiManual:
@@ -1255,16 +1219,16 @@ if params.SemiManual:
     T_att = getattr(params, 'paramsDetOnsets'+'_'+title)[4]
 
 
-Notemin = 'E2' #'SuiteAccordsOrgue': A2, #Purcell : C2, #Schubert : E2, PurcellRecord : C1
-Notemax = 'D9'
+Notemin = 'C3' #'SuiteAccordsOrgue': A2, #Purcell : C2, #Schubert : E2, PurcellRecord : C1
+Notemax = 'E9'
 # score = 'Exemples/'+ title +'-score.png'
-score = 'Exemples/Schubert-score.png'
+score = 'Exemples/CadenceM2-score.png'
 
 
 
 #Chargement de onset_frames
 
-def OpenFrames():
+def OpenFrames(title = title):
     #Avec Sonic Visualiser
     if os.path.exists('Onset_given_'+title+'.txt'):
         onsets = []
@@ -1285,23 +1249,22 @@ def OpenFrames():
     return onset_frames
 
 onset_frames = OpenFrames()
-S = SignalSepare(y, sr, [], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score, instrument)
+S = SignalSepare(y, sr, [y1,y2,y3,y4], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score, instrument)
 S.DetectionOnsets()
 # with open('Onset_given_'+title, 'wb') as g:
 #      pickle.dump(S.onset_frames, g)
-space = ['harmonicity','harmonicityContext']
+space = []
 #'roughness', 'harmonicity','concordance','concordance3','concordanceTot','harmonicChange','diffConcordance','crossConcordance','crossConcordanceTot'
 S.Clustering()
 if params.spectrRug_Simpl: S.SimplifySpectrum()
 S.Context()
 S.ComputeDescripteurs(space = space)
 S.Affichage(space = space, end = 10)
+
 # S.Sort(space = space)
 
 # with open('nouv4', 'wb') as g:
 #     pickle.dump(S.harmonicNovelty, g)
-
-
 
 
 

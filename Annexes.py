@@ -79,40 +79,41 @@ else: print("Aucun fichier n'existe")
 
 
 
-#
-# # Representations abstraites
-# import matplotlib.pyplot as plt
-# import numpy as np
-# import pickle
-# import params
-#
-# with open ('liste1', 'rb') as fp:
-#     liste1 = pickle.load(fp)
-# with open ('liste2', 'rb') as fp:
-#     liste2 = pickle.load(fp)
-# with open ('liste1v', 'rb') as fp:
-#     liste1v = pickle.load(fp)
-# with open ('liste2v', 'rb') as fp:
-#     liste2v = pickle.load(fp)
-#
-#
-# color = params.color_abstr
-#
-# plt.figure()
-# ax = plt.subplot()
-#
-# plt.plot(liste1v, liste2v, 'r'+'--')
-# plt.plot(liste1v, liste2v, 'r'+'o', label = 'Violon')
-# for i in range(len(liste1)):
-#     ax.annotate(' {}'.format(i+1), (liste1[i], liste2[i]), color='black')
-# plt.plot(liste1, liste2, 'b'+'--')
-# plt.plot(liste1, liste2, 'b'+'o',label = 'Piano')
-# for i in range(len(liste1)):
-#     ax.annotate(' {}'.format(i+1), (liste1v[i], liste2v[i]), color='black')
-#
-# d1, d2 = 'diffConcordance', 'crossConcordance'
-# plt.xlabel(d1[0].upper() + d1[1:])
-# plt.ylabel(d2[0].upper() + d2[1:])
-# plt.title('Cadence ' + ' (' + d1[0].upper() + d1[1:] + ', ' + d2[0].upper() + d2[1:] + ')')
-# plt.legend(frameon=True, framealpha=0.75)
-# plt.show()
+
+# Representations abstraites
+import matplotlib.pyplot as plt
+import numpy as np
+import pickle
+import params
+
+with open ('liste1', 'rb') as fp:
+    liste1 = pickle.load(fp)
+with open ('liste2', 'rb') as fp:
+    liste2 = pickle.load(fp)
+with open ('liste1v', 'rb') as fp:
+    liste1v = pickle.load(fp)
+with open ('liste2v', 'rb') as fp:
+    liste2v = pickle.load(fp)
+
+
+color = params.color_abstr
+
+plt.figure()
+ax = plt.subplot()
+
+plt.plot(liste1v, liste2v, 'r'+'--')
+plt.plot(liste1v, liste2v, 'r'+'o', label = 'Violon')
+for i in range(len(liste1)):
+    ax.annotate(' {}'.format(i+1), (liste1[i], liste2[i]), color='black')
+
+plt.plot(liste1, liste2, 'b'+'--')
+plt.plot(liste1, liste2, 'b'+'o',label = 'Piano')
+for i in range(len(liste1)):
+    ax.annotate(' {}'.format(i+1), (liste1v[i], liste2v[i]), color='black')
+
+d1, d2 = 'diffConcordance', 'crossConcordance'
+plt.xlabel(d1[0].upper() + d1[1:])
+plt.ylabel(d2[0].upper() + d2[1:])
+plt.title('Cadence ' + ' (' + d1[0].upper() + d1[1:] + ', ' + d2[0].upper() + d2[1:] + ')')
+plt.legend(frameon=True, framealpha=0.75)
+plt.show()

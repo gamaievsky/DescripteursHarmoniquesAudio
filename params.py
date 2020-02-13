@@ -29,7 +29,7 @@ margin = 3
 SemiManual = False
 
 # Parametres de la fonction de seuil pour la detection d'onset_strength
-α = 140
+α = 170
 ω = 1
 H =  30
 #Filtre sur les onsets
@@ -47,6 +47,7 @@ paramsDetOnsets_Schubert = [140, 1, 30, 0.3, 0.1]
 paramsDetOnsets_Purcell = [140, 1, 30, 0.3, 0.1]
 paramsDetOnsets_SchubertRecord = [140, 1, 30, 0.3, 0.1]
 
+
 #Ajustements = ([frames], [times])
 [delOnsets_Palestrina, addOnsets_Palestrina] = [[], []]
 [delOnsets_PalestrinaM, addOnsets_PalestrinaM] = [[6,8,9], [4.5]] #7,8,9 juste pour éviter la division du même accord
@@ -57,10 +58,11 @@ delOnsets_4Notes, addOnsets_4Notes= [],[22]
 delOnsets_Schubert, addOnsets_Schubert= 'all',[i + 0.1 for i in [0,2,3,4,6,7,8,10,11,12,14,15,16,18,19,20,22,23,24,26,28,30]]
 delOnsets_Purcell, addOnsets_Purcell= 'all',[i + 3.1 for i in [0,1.5,3,4.5,6,7.5,9,9.75,10.5,12,13.5,15,16.5,18,19.5,21,21.75,22.5,23.63,24,25.5,27,28.5,30,30.75,31.5,33,34.5,36,37.5,38.25,39,40.5,42,46.5]]
 delOnsets_SchubertRecord, addOnsets_SchubertRecord= 'all',[i + 0.1 for i in [0,2,3,4,6,7,8,10,11,12,14,15,16,18,19,20,22,23,24,26,28,30]]
+
 #delOnsets_AccordsParalleles, addOnsets_AccordsParalleles = [4,5,6],[5.0,6.05,7.5]#Dévié
 
 #Tri des fréquences qui entrent en compte dans le calcul de la déviation
-triFreq = True
+triFreq = False
 
 #Matrice d'activation (quelles pistes sont à prendre en compte à quel moment ?)
 seuil_activation = 0.01
@@ -83,18 +85,19 @@ memory_size = 0 # "full", int # entier n>=1, auquel cas la mémoire ne dure que 
 memory_type = 'mean' #'max','mean'
 memory_decr_ponderation = 1
 norm_Novelty = 'energy' # 'None', 'energy'
+type_Novelty = 'dyn' #'dyn', 'stat'
 
 norm_concCrossContext = 'chord_by_chord'
 
 
 #PLOT
-plot_onsets = False
+plot_onsets = True
 plot_pistes = False
 plot_partiels = False
 plot_context = False
 plot_decompo_hpss = False
 plot_chromDescr = False
-plot_descr = True
+plot_descr = False
 plot_OneDescr = False
 plot_abstr = False
 plot_symb = False
