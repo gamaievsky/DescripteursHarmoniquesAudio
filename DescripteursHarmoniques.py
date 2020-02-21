@@ -21,6 +21,7 @@ import os
 import pyaudio
 import threading
 import pickle
+np.seterr(divide='ignore', invalid='ignore')
 
 
 import params
@@ -166,7 +167,7 @@ class SignalSepare:
         self.Chrom_ONSETS = np.abs(librosa.cqt(y=self.y, sr=self.sr, hop_length = STEP, fmin= self.fmin, bins_per_octave=BINS_PER_OCTAVE_ONSETS, n_bins=self.n_bins_ONSETS, window=WINDOW))
         self.ChromDB_ONSETS = librosa.amplitude_to_db(self.Chrom_ONSETS, ref=np.max)
         self.N = len(self.ChromDB_ONSETS[0])
-        self.times = librosa.frames_to_time(np.arange(self.N), sr=sr, hop_length=STEP)
+        self.times = librosa.frames_to_time(np.arange(self.N), sr=self.sr, hop_length=STEP)
 
         # CALCUL DES ONSETS (pour onset précalculé, le rentrer dans self.onset_frames à l'initialisation)
         if len(self.onset_frames) == 0:
@@ -215,12 +216,12 @@ class SignalSepare:
 
              #Ajout manuel des onsets
             for t in self.addOnsets:
-                Onsets.append(librosa.time_to_frames(t, sr=sr, hop_length=STEP))
+                Onsets.append(librosa.time_to_frames(t, sr=self.sr, hop_length=STEP))
                 Onsets.sort()
             self.onset_frames = librosa.util.fix_frames(Onsets, x_min=0, x_max=self.ChromDB_ONSETS.shape[1]-1)
 
         self.onset_frames = librosa.util.fix_frames(self.onset_frames, x_min=0, x_max=self.ChromDB_ONSETS.shape[1]-1)
-        self.onset_times = librosa.frames_to_time(self.onset_frames, sr=sr, hop_length = STEP)
+        self.onset_times = librosa.frames_to_time(self.onset_frames, sr=self.sr, hop_length = STEP)
         self.n_frames = len(self.onset_frames)-1
         self.n_notes = np.ones(self.n_frames)
 
@@ -272,8 +273,8 @@ class SignalSepare:
             ChromPistes = []
             for k, voice in enumerate(self.pistes):
                 if params.decompo_hpss:
-                    ChromPistes.append(librosa.decompose.hpss(np.abs(librosa.cqt(y=voice, sr=self.sr, hop_length = STEP, fmin= self.fmin, bins_per_octave=BINS_PER_OCTAVE, n_bins=self.n_bins)), margin=params.margin)[0])
-                else: ChromPistes.append(np.abs(librosa.cqt(y=voice, sr=self.sr, hop_length = STEP, fmin= self.fmin, bins_per_octave=BINS_PER_OCTAVE, n_bins=self.n_bins)))
+                    ChromPistes.append(np.nan_to_num(librosa.decompose.hpss(np.abs(librosa.cqt(y=voice, sr=self.sr, hop_length = STEP, fmin= self.fmin, bins_per_octave=BINS_PER_OCTAVE, n_bins=self.n_bins)), margin=params.margin)[0],False))
+                else: ChromPistes.append(np.nan_to_num(np.abs(librosa.cqt(y=voice, sr=self.sr, hop_length = STEP, fmin= self.fmin, bins_per_octave=BINS_PER_OCTAVE, n_bins=self.n_bins)),False))
 
 
             for k, voice in enumerate(self.pistes):
@@ -349,7 +350,6 @@ class SignalSepare:
         #Calcul de l'énergie du contexte
         for t in range(self.n_frames):
             self.energyContext.append(np.sum(np.multiply(self.context[:,t], self.context[:,t])))
-
 
 
     def SimplifySpectrum(self):
@@ -751,9 +751,6 @@ class SignalSepare:
 
 
 
-
-
-
     def ComputeDescripteurs(self, space = ['concordance','concordanceTot']):
         """Calcule les descripteurs indiqués dans 'space', puis les affiche"""
 
@@ -1148,16 +1145,23 @@ class SignalSepare:
 
         plt.show()
 
-        # if os.path.exists('liste1v'):
-        #   os.remove('liste1v')
-        # if os.path.exists('liste2v'):
-        #   os.remove('liste2v')
-        #
-        #
-        # with open('liste1v', 'wb') as g:
-        #      pickle.dump(l1/max(l1), g)
-        # with open('liste2v', 'wb') as g:
-        #      pickle.dump(l2/max(l2), g)
+    def Points(self, space = ['concordance', 'concordanceTot']):
+
+        L = []
+        for descr in space:
+            if isinstance(getattr(self,descr), list): L.append(getattr(self,descr)[1:-1])
+            else : L.append(getattr(self,descr).tolist()[1:-1])
+
+        # Si à la fois descripteurs statiques et dynamiques dans space, alors on réduit la longueur des listes de descripteurs statiques en considérant l'évolution du descripteur statique
+        T = min(map(len,L))
+        for i in range(len(space)):
+            if len(L[i])>T:
+                for t in range(len(L[i])-1):
+                    L[i][t] = L[i][t+1] - L[i][t]
+                L[i].pop(-1)
+
+        Points = np.asarray(L)
+        return Points
 
 
 
@@ -1193,80 +1197,340 @@ class SignalSepare:
 
 
 
-title = 'CadenceM2_T11'
-instrument = 'Organ'
-#Palestrina, PalestrinaM, SuiteAccords, AccordsParalleles, 'SuiteAccordsOrgue', 'SuiteAccordsPiano', 'CadenceM','CadenceM2','AccordsM', 'SuiteAccordsViolin', Schubert
-# y, sr = librosa.load('Exemples/'+title+'.wav')
-# y1, sr = librosa.load('Exemples/'+title+'-Basse.wav')
-# y2, sr = librosa.load('Exemples/'+title+'-Alto.wav')
-# y3, sr = librosa.load('Exemples/'+title+'-Soprano.wav')
-# y4, sr = librosa.load('Exemples/'+title+'-Tenor.wav')
-y, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'.wav')
-y1, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Basse.wav')
-y2, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Alto.wav')
-y3, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Soprano.wav')
-y4, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Tenor.wav')
 
-delOnsets = []
-addOnsets = []
-if params.SemiManual:
-    delOnsets = getattr(params, 'delOnsets'+'_'+title)
-    addOnsets = getattr(params, 'addOnsets'+'_'+title)
-    α = getattr(params, 'paramsDetOnsets'+'_'+title)[0]
-    ω = getattr(params, 'paramsDetOnsets'+'_'+title)[1]
-    H = getattr(params, 'paramsDetOnsets'+'_'+title)[2]
-    T = getattr(params, 'paramsDetOnsets'+'_'+title)[3]
-    T_att = getattr(params, 'paramsDetOnsets'+'_'+title)[4]
+if params.oneInstrument:
 
+    # CHARGEMENT DES SONS ET DE LA PARTITION
+    title = 'CadenceM2_T4'
+    instrument = 'Organ'
+    #Palestrina, PalestrinaM, SuiteAccords, AccordsParalleles, 'SuiteAccordsOrgue', 'SuiteAccordsPiano', 'CadenceM','CadenceM2','AccordsM', 'SuiteAccordsViolin', Schubert
+    # y, sr = librosa.load('Exemples/'+title+'.wav')
+    # y1, sr = librosa.load('Exemples/'+title+'-Basse.wav')
+    # y2, sr = librosa.load('Exemples/'+title+'-Alto.wav')
+    # y3, sr = librosa.load('Exemples/'+title+'-Soprano.wav')
+    # y4, sr = librosa.load('Exemples/'+title+'-Tenor.wav')
+    y, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'.wav')
+    y1, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Basse.wav')
+    y2, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Alto.wav')
+    y3, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Soprano.wav')
+    y4, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Tenor.wav')
 
-Notemin = 'C3' #'SuiteAccordsOrgue': A2, #Purcell : C2, #Schubert : E2, PurcellRecord : C1
-Notemax = 'E9'
-# score = 'Exemples/'+ title +'-score.png'
-score = 'Exemples/CadenceM2-score.png'
+    Notemin = 'C3' #'SuiteAccordsOrgue': A2, #Purcell : C2, #Schubert : E2, PurcellRecord : C1
+    Notemax = 'E9'
+    # score = 'Exemples/'+ title +'-score.png'
+    score = 'Exemples/CadenceM2-score.png'
 
+    # DETECTION D'ONSETS
+    delOnsets = []
+    addOnsets = []
+    if params.SemiManual:
+        delOnsets = getattr(params, 'delOnsets'+'_'+title)
+        addOnsets = getattr(params, 'addOnsets'+'_'+title)
+        α = getattr(params, 'paramsDetOnsets'+'_'+title)[0]
+        ω = getattr(params, 'paramsDetOnsets'+'_'+title)[1]
+        H = getattr(params, 'paramsDetOnsets'+'_'+title)[2]
+        T = getattr(params, 'paramsDetOnsets'+'_'+title)[3]
+        T_att = getattr(params, 'paramsDetOnsets'+'_'+title)[4]
 
+    # Chargement de onset_frames
+    def OpenFrames(title = title):
+        #Avec Sonic Visualiser
+        if os.path.exists('Onset_given_'+title+'.txt'):
+            onsets = []
+            with open('Onset_given_'+title+'.txt','r') as f:
+                for line in f:
+                    l = line.split()
+                    onsets.append(float(l[0]))
+            onset_times = np.asarray(onsets)
+            onset_frames = librosa.time_to_frames(onset_times, sr=sr, hop_length = STEP)
 
-#Chargement de onset_frames
+        #Avec ma méthode de visualisation
+        elif os.path.exists('Onset_given_'+title):
+            with open('Onset_given_'+title, 'rb') as f:
+            # with open('Onset_given_2et3Notes', 'rb') as f:
+                onset_frames = pickle.load(f)
+        else: onset_frames = []
+        return onset_frames
+    onset_frames = OpenFrames()
 
-def OpenFrames(title = title):
-    #Avec Sonic Visualiser
-    if os.path.exists('Onset_given_'+title+'.txt'):
-        onsets = []
-        with open('Onset_given_'+title+'.txt','r') as f:
-            for line in f:
-                l = line.split()
-                onsets.append(float(l[0]))
-        onset_times = np.asarray(onsets)
-        onset_frames = librosa.time_to_frames(onset_times, sr=sr, hop_length = STEP)
-
-    #Avec ma méthode de visualisation
-    elif os.path.exists('Onset_given_'+title):
-        print('No')
-        with open('Onset_given_'+title, 'rb') as f:
-        # with open('Onset_given_2et3Notes', 'rb') as f:
-            onset_frames = pickle.load(f)
-    else: onset_frames = []
-    return onset_frames
-
-onset_frames = OpenFrames()
-S = SignalSepare(y, sr, [y1,y2,y3,y4], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score, instrument)
-S.DetectionOnsets()
-# with open('Onset_given_'+title, 'wb') as g:
-#      pickle.dump(S.onset_frames, g)
-space = []
-#'roughness', 'harmonicity','concordance','concordance3','concordanceTot','harmonicChange','diffConcordance','crossConcordance','crossConcordanceTot'
-S.Clustering()
-if params.spectrRug_Simpl: S.SimplifySpectrum()
-S.Context()
-S.ComputeDescripteurs(space = space)
-S.Affichage(space = space, end = 10)
-
-# S.Sort(space = space)
-
-# with open('nouv4', 'wb') as g:
-#     pickle.dump(S.harmonicNovelty, g)
+    # CRÉATION DE L'INSTANCE DE CLASSE
+    S = SignalSepare(y, sr, [y1,y2,y3,y4], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score, instrument)
+    S.DetectionOnsets()
+    # with open('Onset_given_'+title+'_T', 'wb') as g:
+    #      pickle.dump(S.onset_frames, g)
+    space = ['concordance']
+    #'roughness', 'harmonicity','concordance','concordance3','concordanceTot','harmonicChange','diffConcordance','crossConcordance','crossConcordanceTot'
+    S.Clustering()
+    if params.spectrRug_Simpl: S.SimplifySpectrum()
+    S.Context()
+    S.ComputeDescripteurs(space = space)
+    S.Affichage(space = space, end = 10)
+    # S.Points(space)
 
 
 
-#Nmin = int(S.sr/(S.fmax*(2**(1/BINS_PER_OCTAVE)-1)))
-#Nmax = int((S.sr/(S.fmin*(2**(1/BINS_PER_OCTAVE)-1))))
+
+if params.compare_instruments:
+
+    # PARAMETRES
+    type_Temporal = params.type_Temporal
+    type_Normalisation = params.type_Normalisation
+
+    liste_timbres = ['Bourdon8', 'Cheminée8', 'Flûte4', 'Flûte2', 'Octave2','Brd + Chm', 'Brd + Fl4', 'Chm + Fl2', 'Chm + Fl4', 'Fl4 + Fl2', 'Tutti']
+    N_timbres = len(liste_timbres)
+    dic_timbres = {liste_timbres[i]:i+1 for i in range(N_timbres)}
+    spaceStat_NoCtx = ['roughness', 'harmonicity', 'concordance', 'concordanceTot', 'concordance3']
+    spaceStat_Ctx = ['harmonicityContext', 'roughnessContext']
+    spaceStat = spaceStat_NoCtx + spaceStat_Ctx
+    spaceDyn_NoCtx = ['harmonicChange', 'diffConcordance', 'crossConcordance', 'crossConcordanceTot']
+    spaceDyn_Ctx = ['harmonicNovelty','diffConcordanceContext', 'diffRoughnessContext']
+    spaceDyn = spaceDyn_NoCtx + spaceDyn_Ctx
+
+    space = spaceDyn_NoCtx
+
+    title = 'CadenceM2'
+
+    # Chargement de onset_frames
+    def OpenFrames(title = ''):
+        #Avec Sonic Visualiser
+        if os.path.exists('Onset_given_'+title+'.txt'):
+            onsets = []
+            with open('Onset_given_'+title+'.txt','r') as f:
+                for line in f:
+                    l = line.split()
+                    onsets.append(float(l[0]))
+            onset_times = np.asarray(onsets)
+            onset_frames = librosa.time_to_frames(onset_times, sr=sr, hop_length = STEP)
+
+        #Avec ma méthode de visualisation
+        elif os.path.exists('Onset_given_'+title):
+            with open('Onset_given_'+title, 'rb') as f:
+            # with open('Onset_given_2et3Notes', 'rb') as f:
+                onset_frames = pickle.load(f)
+        else: onset_frames = []
+        return onset_frames
+    onset_frames = OpenFrames()
+
+    Notemin = 'C3'
+    Notemax = 'E9'
+    score = 'Exemples/'+ title +'-score.png'
+
+
+    def Construction_Points(liste_timbres = liste_timbres, space = space, filename = 'Points.npy'):
+        Points = []
+        for instrument in liste_timbres:
+            # CHARGEMENT DES SONS ET DE LA PARTITION
+            y, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'_T{}'.format(dic_timbres[instrument])+'.wav')
+            y1, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'_T{}'.format(dic_timbres[instrument])+'-Basse.wav')
+            y2, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'_T{}'.format(dic_timbres[instrument])+'-Alto.wav')
+            y3, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'_T{}'.format(dic_timbres[instrument])+'-Soprano.wav')
+            y4, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'_T{}'.format(dic_timbres[instrument])+'-Tenor.wav')
+
+            # CRÉATION DE L'INSTANCE DE CLASSE
+            S = SignalSepare(y, sr, [y1,y2,y3,y4], Notemin, Notemax,onset_frames,score = score,instrument = instrument)
+            S.DetectionOnsets()
+            S.Clustering()
+            if params.spectrRug_Simpl: S.SimplifySpectrum()
+            # S.Context()
+            S.ComputeDescripteurs(space = space)
+
+            # CRÉATION DE POINTS
+            Points.append(S.Points(space))
+
+
+        Points = np.asarray(Points)
+        print(Points.shape)
+        np.save(filename, Points) # save
+
+
+    # Fonction qui normalise la matrice Points
+    def Normalise(Points, type_Normalisation = type_Normalisation):
+        if type_Normalisation == 'by timbre':
+            max = np.amax(Points, axis = (0,2))
+            for descr in range(Points.shape[1]):
+                Points[:,descr,:] /= max[descr]
+        elif type_Normalisation == 'by curve':
+            max = np.amax(Points, axis = 2)
+            for timbre in range(Points.shape[0]):
+                for descr in range(Points.shape[1]):
+                    Points[timbre,descr,:] /= max[timbre,descr]
+        return Points
+
+    # Fonction qui calcule la matrice des écart-types sur tous les timbres
+    def Dispersion(Points,type_Temporal = type_Temporal):
+        if type_Temporal == 'static':
+            Disp = np.std(Points,axis = 0)
+        elif type_Temporal == 'differential':
+            Points_diff = np.zeros((Points.shape[0],Points.shape[1],Points.shape[2]-1))
+            for i in range(Points.shape[2]-1):
+                Points_diff[:,:,i] = Points[:,:,i+1]-Points[:,:,i]
+            Disp = np.std(Points_diff,axis = 0)
+        Disp_by_descr = np.mean(Disp, axis = 1)
+        Disp_by_time = np.linalg.norm(Disp, axis = 0)
+        return Disp, Disp_by_descr,Disp_by_time
+
+    def Inerties(Points, type_Temporal = type_Temporal):
+        if type_Temporal == 'static':
+            Inertie_tot = np.std(Points, axis = (0,2))
+            Mean = np.mean(Points,axis = 0)
+        elif type_Temporal == 'differential':
+            Points_diff = np.zeros((Points.shape[0],Points.shape[1],Points.shape[2]-1))
+            for i in range(Points.shape[2]-1):
+                Points_diff[:,:,i] = Points[:,:,i+1]-Points[:,:,i]
+            Inertie_tot = np.std(Points_diff, axis = (0,2))
+            Mean = np.mean(Points_diff, axis = 0)
+        Inertie_inter = np.std(Mean, axis = 1)
+        return Inertie_tot, Inertie_inter
+
+
+    # Fonction qui trie les descripteurs en fonction du minimum de dispersion
+    def MinimizeDispersion(Disp_by_descr, space = space):
+        disp_sorted = np.sort(Disp_by_descr)
+        descr_sorted = [space[i] for i in np.argsort(Disp_by_descr)]
+        return descr_sorted, disp_sorted
+
+    # Fonction qui trie les descripteurs en fonction du minimum de dispersion
+    def MaximizeSeparation(Inertie_tot, Inertie_inter, space = space):
+        inert_inter_sorted = np.sort(Inertie_inter)
+        inert_tot_sorted = [Inertie_tot[i] for i in np.argsort(Inertie_inter)]
+        descr_inert_sorted = [space[i] for i in np.argsort(Inertie_inter)]
+        return inert_inter_sorted, inert_tot_sorted, descr_inert_sorted
+
+
+    def Clustered(Points, spacePlot, space = space, liste_timbres = liste_timbres, type_Temporal = type_Temporal):
+        ind_descr = [space.index(descr) for descr in spacePlot]
+        ind_instrument = [dic_timbres[instrument]-1 for instrument in liste_timbres]
+        if type_Temporal == 'static':
+            Points_sub = Points[[ind_instrument],[ind_descr],:]
+        if type_Temporal == 'differential':
+            Points_diff = np.zeros((Points.shape[0],Points.shape[1],Points.shape[2]-1))
+            for i in range(Points.shape[2]-1):
+                Points_diff[:,:,i] = Points[:,:,i+1]-Points[:,:,i]
+            Points_sub = Points_diff[ind_instrument][:,ind_descr]
+        disp_traj = np.sum(np.linalg.norm(np.std(Points_sub,axis = 0), axis = 0))
+        inertie_inter = np.std(np.mean(Points_sub,axis = 0), axis = 1)
+        inertie_tot = np.std(Points_sub, axis = (0,2))
+        sep = np.inner(inertie_inter, inertie_inter) / np.inner(inertie_tot, inertie_tot)
+        print('Dispersion : {} \nSeparation : {}'.format(disp_traj, sep))
+
+
+
+    # Visualisation
+    def Visualize(Points, space = space, descr = space[0:2], liste_timbres = liste_timbres, type_Temporal = type_Temporal):
+        dim1 = space.index(descr[0])
+        dim2 = space.index(descr[1])
+
+        # Fonction qui renvoie True si deux listes ont une intersection commune
+        def intersect(lst1, lst2):
+            inter = False
+            i = 0
+            while (not inter) & (i<len(lst1)):
+                if (lst1[i] in lst2): inter = True
+                i += 1
+            return inter
+
+
+
+        # Détermination de la présence simultanée de descripteurs statiques et dynamiques dans space, et le cas échéant attribution du suffixe 'evolution' aux descr stat
+        suff0, suff1 = '',''
+        if intersect(space,spaceStat) & intersect(space,spaceDyn):
+            if descr[0] in spaceStat: suff0 = ' evolution'
+            if descr[1] in spaceStat: suff1 = ' evolution'
+
+        plt.figure(figsize=(8, 7))
+        ax = plt.subplot()
+
+
+        if type_Temporal =='static':
+            for instrument in liste_timbres:
+                timbre = dic_timbres[instrument]-1
+                if params.visualize_trajectories:
+                    plt.plot(Points[timbre,dim1,:].tolist(), Points[timbre,dim2,:].tolist(), color ='C{}'.format(timbre),ls = '--',marker = 'o', label = instrument)
+                if params.visualize_time_grouping:
+                    for t in range(len(Points[timbre,dim1,:])):
+                        plt.plot(Points[timbre,dim1,:].tolist()[t], Points[timbre,dim2,:].tolist()[t], color ='C{}'.format(t),ls = '--',marker = 'o')
+                for t in range(len(Points[timbre,dim1,:].tolist())):
+                    ax.annotate(' {}'.format(t+1), (Points[timbre,dim1,:][t], Points[timbre,dim2,:][t]), color='black')
+            if not all(x>=0 for x in Points[:,dim1,:].flatten()):
+                plt.vlines(0,np.amin(Points[:,dim2,:]), np.amax(Points[:,dim2,:]), alpha=0.5, linestyle = ':')
+            if not all(x>=0 for x in Points[:,dim2,:].flatten()):
+                plt.hlines(0,np.amin(Points[:,dim1,:]), np.amax(Points[:,dim1,:]), alpha=0.5, linestyle = ':')
+            plt.xlabel(descr[0][0].upper() + descr[0][1:] + suff0)
+            plt.ylabel(descr[1][0].upper() + descr[1][1:] + suff1)
+            plt.title(title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ')\n' + 'Normalisation ' + type_Normalisation[3:] + ' ' + type_Normalisation + '\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
+
+
+        elif type_Temporal =='differential':
+            # Construction de la matrice Points_diff
+            Points_diff = np.zeros((Points.shape[0],Points.shape[1],Points.shape[2]-1))
+            for i in range(Points.shape[2]-1):
+                Points_diff[:,:,i] = Points[:,:,i+1]-Points[:,:,i]
+            for instrument in liste_timbres:
+                timbre = dic_timbres[instrument]-1
+                if params.visualize_trajectories:
+                    plt.plot(Points_diff[timbre,dim1,:].tolist(), Points_diff[timbre,dim2,:].tolist(), color ='C{}'.format(timbre),ls = '--',marker = 'o', label = instrument)
+                if params.visualize_time_grouping:
+                    for t in range(len(Points_diff[timbre,dim1,:])):
+                        plt.plot(Points_diff[timbre,dim1,:].tolist()[t], Points_diff[timbre,dim2,:].tolist()[t], color ='C{}'.format(t),ls = '--',marker = 'o')
+                for t in range(len(Points_diff[timbre,dim1,:].tolist())):
+                    ax.annotate(' {}'.format(t+1), (Points_diff[timbre,dim1,:][t], Points_diff[timbre,dim2,:][t]), color='black')
+
+            if not all(x>=0 for x in Points_diff[:,dim1,:].flatten()):
+                plt.vlines(0,np.amin(Points_diff[:,dim2,:]), np.amax(Points_diff[:,dim2,:]), alpha=0.5, linestyle = ':')
+            if not all(x>=0 for x in Points_diff[:,dim2,:].flatten()):
+                plt.hlines(0,np.amin(Points_diff[:,dim1,:]), np.amax(Points_diff[:,dim1,:]), alpha=0.5, linestyle = ':')
+
+            plt.xlabel(descr[0][0].upper() + descr[0][1:] + suff0 + ' evolution')
+            plt.ylabel(descr[1][0].upper() + descr[1][1:] + suff1 + ' evolution')
+            plt.title(title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ' evolution' + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ' evolution'+ ')\n' + 'Normalisation ' + type_Normalisation[3:] + ' ' + type_Normalisation + '\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
+
+        plt.legend(frameon=True, framealpha=0.75)
+        plt.show()
+
+
+
+    # Construction_Points(filename = 'Points_Dyn.npy')
+
+    # Points = np.concatenate((np.load('Points1.npy'), np.load('Points2.npy')), axis=0)
+    # np.save('Points_Stat.npy', Points)
+
+    Points = np.load('Points_Dyn.npy')
+    Points = Normalise(Points)
+    Disp, Disp_by_descr,Disp_by_time = Dispersion(Points)
+    # Inertie_tot, Inertie_inter = Inerties(Points)
+    descr_sorted, disp_sorted = MinimizeDispersion(Disp_by_descr)
+    # inert_inter_sorted, inert_tot_sorted, descr_inert_sorted = MaximizeSeparation(Inertie_tot, Inertie_inter)
+    # spacePlot = ['harmonicChange', 'diffConcordance']
+    spacePlot = descr_sorted[0:2]
+    Clustered(Points, spacePlot)
+    Visualize(Points, descr = spacePlot)#, liste_timbres = ['Bourdon8', 'Cheminée8','Brd + Chm','Tutti'])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    # S.Sort(space = space)
+    #
+    # with open('nouv4', 'wb') as g:
+    #     pickle.dump(S.harmonicNovelty, g)
+    #
+    # Nmin = int(S.sr/(S.fmax*(2**(1/BINS_PER_OCTAVE)-1)))
+    # Nmax = int((S.sr/(S.fmin*(2**(1/BINS_PER_OCTAVE)-1))))

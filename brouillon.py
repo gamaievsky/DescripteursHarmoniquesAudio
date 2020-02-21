@@ -1,9 +1,7 @@
-import librosa
-import librosa.display
 
-title = 'CadenceM2_T1'
-y, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'.wav')
-y1, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Basse.wav')
-y2, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Alto.wav')
-y3, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Soprano.wav')
-y4, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Tenor.wav')
+import numpy as np
+
+a = np.array([[0,1,2,3],[4,5,6,7],[8,9,10,11],[12,13,14,15]])
+
+b = a[[1,3],:][:,[1,3]]
+print(b)

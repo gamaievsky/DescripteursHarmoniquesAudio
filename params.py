@@ -2,8 +2,20 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 
+oneInstrument = False
+compare_instruments = True
+
+type_Temporal = 'differential' #'static', 'differential'
+type_Normalisation = 'by timbre' #'by curve', 'by timbre'
+visualize_time_grouping = True
+visualize_trajectories = False
+
+correlation = False
+pca = False
+
+
 #general load WAV
-begin = 0.0 #start reading the analysed signal after this time (in seconds)
+begin = 0.0 #start reading the analysed signal after this time (in seconds)s
 duration = None #60*2 # duration of the analysed signal (in seconds) ou None.
 begin_ref = 0.0 #beginning of the reference signal for computing cosine distance between clusters (in seconds).
 end_ref = 0.05 #end of the reference signal for computing cosine distance between clusters (in seconds).
@@ -81,7 +93,7 @@ norm_diffConc = 'chord_by_chord' # 'note_by_note', 'chord_by_chord', ('frame-by-
 norm_harmonicity = 2 # La puissance dans le calcul de l'harmonicité. 1 : amplitude, 2 : énergie
 norm_diffRug = 'energy'
 
-memory_size = 0 # "full", int # entier n>=1, auquel cas la mémoire ne dure que n+1 accords
+memory_size = 1 # "full", int # entier n>=1, auquel cas la mémoire ne dure que n+1 accords
 memory_type = 'mean' #'max','mean'
 memory_decr_ponderation = 1
 norm_Novelty = 'energy' # 'None', 'energy'
@@ -112,6 +124,7 @@ cmap='gray_r' # 'magma','gray_r','coolwarm'
 color_abstr = 'b'
 color_abstr_numbers = 'black'
 link_abstr = True
+
 
 
 #PARAMETRES DES DESCRIPTEURS
