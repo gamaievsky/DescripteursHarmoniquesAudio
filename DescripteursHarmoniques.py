@@ -1197,23 +1197,248 @@ class SignalSepare:
 
 
 
+# PARAMETRES
+type_Temporal = params.type_Temporal
+type_Normalisation = params.type_Normalisation
+
+
+
+def Construction_Points(liste_timbres_or_scores, title, space, Notemin, Notemax, dic, filename = 'Points.npy', score = [], instrument = 'Organ', name_OpenFrames = '', duration = None):
+    # Chargement de onset_frames
+    def OpenFrames(title):
+        #Avec Sonic Visualiser
+        if os.path.exists('Onset_given_'+title+'.txt'):
+            onsets = []
+            with open('Onset_given_'+title+'.txt','r') as f:
+                for line in f:
+                    l = line.split()
+                    onsets.append(float(l[0]))
+            onset_times = np.asarray(onsets)
+            onset_frames = librosa.time_to_frames(onset_times, sr=sr, hop_length = STEP)
+
+        #Avec ma méthode de visualisation
+        elif os.path.exists('Onset_given_'+title):
+            with open('Onset_given_'+title, 'rb') as f:
+            # with open('Onset_given_2et3Notes', 'rb') as f:
+                onset_frames = pickle.load(f)
+        else: onset_frames = []
+        return onset_frames
+    onset_frames = OpenFrames(name_OpenFrames)
+
+    Points = []
+    if params.compare_instruments:
+        for instrument in liste_timbres_or_scores:
+            # CHARGEMENT DES SONS ET DE LA PARTITION
+            y, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'_T{}'.format(dic[instrument])+'.wav', duration = duration)
+            y1, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'_T{}'.format(dic[instrument])+'-Basse.wav', duration = duration)
+            y2, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'_T{}'.format(dic[instrument])+'-Alto.wav', duration = duration)
+            y3, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'_T{}'.format(dic[instrument])+'-Soprano.wav', duration = duration)
+            y4, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'_T{}'.format(dic[instrument])+'-Tenor.wav', duration = duration)
+
+            # CRÉATION DE L'INSTANCE DE CLASSE
+            S = SignalSepare(y, sr, [y1,y2,y3,y4], Notemin, Notemax, onset_frames,score = score,instrument = instrument)
+            S.DetectionOnsets()
+            S.Clustering()
+            if params.spectrRug_Simpl: S.SimplifySpectrum()
+            # S.Context()
+            S.ComputeDescripteurs(space = space)
+
+            # CRÉATION DE POINTS
+            Points.append(S.Points(space))
+    if params.compare_scores:
+        for score in liste_timbres_or_scores:
+            # CHARGEMENT DES SONS ET DE LA PARTITION
+            y, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+ title +'{}.wav'.format(dic[score]), duration = duration)
+            y1, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'{}-Basse.wav'.format(dic[score]), duration = duration)
+            y2, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'{}-Alto.wav'.format(dic[score]), duration = duration)
+            y3, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'{}-Soprano.wav'.format(dic[score]), duration = duration)
+            y4, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'{}-Tenor.wav'.format(dic[score]), duration = duration)
+
+            # CRÉATION DE L'INSTANCE DE CLASSE
+            S = SignalSepare(y, sr, [y1,y2,y3,y4], Notemin, Notemax,onset_frames,score = score,instrument = instrument)
+            S.DetectionOnsets()
+            S.Clustering()
+            if params.spectrRug_Simpl: S.SimplifySpectrum()
+            # S.Context()
+            S.ComputeDescripteurs(space = space)
+
+            # CRÉATION DE POINTS
+            Points.append(S.Points(space))
+            print(score + ': OK')
+
+
+
+    Points = np.asarray(Points)
+    print(Points.shape)
+    np.save(filename, Points) # save
+
+# Fonction qui normalise la matrice Points
+def Normalise(Points, liste_timbres_or_scores, dic, type_Normalisation = type_Normalisation):
+    ind_instrument = [dic[instrument]-1 for instrument in liste_timbres_or_scores]
+    Points = Points[ind_instrument]
+    if type_Normalisation == 'by timbre':
+        max = np.amax(Points, axis = (0,2))
+        for descr in range(Points.shape[1]):
+            Points[:,descr,:] /= max[descr]
+    elif type_Normalisation == 'by curve':
+        max = np.amax(Points, axis = 2)
+        for timbre in range(Points.shape[0]):
+            for descr in range(Points.shape[1]):
+                Points[timbre,descr,:] /= max[timbre,descr]
+    return Points
+
+# Fonction qui calcule la matrice des écart-types sur tous les timbres
+def Dispersion(Points,type_Temporal = type_Temporal):
+    if type_Temporal == 'static':
+        Disp = np.std(Points,axis = 0)
+    elif type_Temporal == 'differential':
+        Points_diff = np.zeros((Points.shape[0],Points.shape[1],Points.shape[2]-1))
+        for i in range(Points.shape[2]-1):
+            Points_diff[:,:,i] = Points[:,:,i+1]-Points[:,:,i]
+        Disp = np.std(Points_diff,axis = 0)
+    Disp_by_descr = np.mean(Disp, axis = 1)
+    Disp_by_time = np.linalg.norm(Disp, axis = 0)
+    return Disp, Disp_by_descr,Disp_by_time
+
+
+def Inerties(Points, type_Temporal = type_Temporal):
+    if type_Temporal == 'static':
+        Inertie_tot = np.std(Points, axis = (0,2))
+        Mean = np.mean(Points,axis = 0)
+    elif type_Temporal == 'differential':
+        Points_diff = np.zeros((Points.shape[0],Points.shape[1],Points.shape[2]-1))
+        for i in range(Points.shape[2]-1):
+            Points_diff[:,:,i] = Points[:,:,i+1]-Points[:,:,i]
+        Inertie_tot = np.std(Points_diff, axis = (0,2))
+        Mean = np.mean(Points_diff, axis = 0)
+    Inertie_inter = np.std(Mean, axis = 1)
+    return Inertie_tot, Inertie_inter
+
+# Fonction qui trie les descripteurs en fonction du minimum de dispersion
+def MinimizeDispersion(Disp_by_descr, space):
+    disp_sorted = np.sort(Disp_by_descr)
+    descr_sorted = [space[i] for i in np.argsort(Disp_by_descr)]
+    return descr_sorted, disp_sorted
+
+# Fonction qui trie les descripteurs en fonction du minimum de dispersion
+def MaximizeSeparation(Inertie_tot, Inertie_inter, space):
+    inert_inter_sorted = np.sort(Inertie_inter)
+    inert_tot_sorted = [Inertie_tot[i] for i in np.argsort(Inertie_inter)]
+    descr_inert_sorted = [space[i] for i in np.argsort(Inertie_inter)]
+    return inert_inter_sorted, inert_tot_sorted, descr_inert_sorted
+
+
+def Clustered(Points, spacePlot, space, liste_timbres_or_scores, dic, type_Temporal = type_Temporal):
+    ind_descr = [space.index(descr) for descr in spacePlot]
+    ind_instrument = [dic[instrument]-1 for instrument in liste_timbres_or_scores]
+    if type_Temporal == 'static':
+        Points_sub = Points[ind_instrument][:,ind_descr]
+    if type_Temporal == 'differential':
+        Points_diff = np.zeros((Points.shape[0],Points.shape[1],Points.shape[2]-1))
+        for i in range(Points.shape[2]-1):
+            Points_diff[:,:,i] = Points[:,:,i+1]-Points[:,:,i]
+        Points_sub = Points_diff[ind_instrument][:,ind_descr]
+    disp_traj = np.sum(np.linalg.norm(np.std(Points_sub,axis = 0), axis = 0))
+    inertie_inter = np.std(np.mean(Points_sub,axis = 0), axis = 1)
+    inertie_tot = np.std(Points_sub, axis = (0,2))
+    sep = np.inner(inertie_inter, inertie_inter) / np.inner(inertie_tot, inertie_tot)
+    print('Dispersion : {} \nSeparation : {}'.format(disp_traj, sep))
+
+# Visualisation
+def Visualize(Points, descr, space, liste_timbres_or_scores, dic, type_Temporal = type_Temporal):
+    dim1 = space.index(descr[0])
+    dim2 = space.index(descr[1])
+
+    # Fonction qui renvoie True si deux listes ont une intersection commune
+    def intersect(lst1, lst2):
+        inter = False
+        i = 0
+        while (not inter) & (i<len(lst1)):
+            if (lst1[i] in lst2): inter = True
+            i += 1
+        return inter
+
+
+
+    # Détermination de la présence simultanée de descripteurs statiques et dynamiques dans space, et le cas échéant attribution du suffixe 'evolution' aux descr stat
+    suff0, suff1 = '',''
+    if intersect(space,spaceStat) & intersect(space,spaceDyn):
+        if descr[0] in spaceStat: suff0 = ' evolution'
+        if descr[1] in spaceStat: suff1 = ' evolution'
+
+    plt.figure(figsize=(8, 7))
+    ax = plt.subplot()
+
+
+    if type_Temporal =='static':
+        for instrument in liste_timbres_or_scores:
+            timbre = dic[instrument]-1
+            if params.visualize_trajectories:
+                plt.plot(Points[timbre,dim1,:].tolist(), Points[timbre,dim2,:].tolist(), color ='C{}'.format(timbre),ls = '--',marker = 'o', label = instrument)
+            if params.visualize_time_grouping:
+                for t in range(len(Points[timbre,dim1,:])):
+                    plt.plot(Points[timbre,dim1,:].tolist()[t], Points[timbre,dim2,:].tolist()[t], color ='C{}'.format(t),ls = '--',marker = 'o')
+            for t in range(len(Points[timbre,dim1,:].tolist())):
+                ax.annotate(' {}'.format(t+1), (Points[timbre,dim1,:][t], Points[timbre,dim2,:][t]), color='black')
+        if not all(x>=0 for x in Points[:,dim1,:].flatten()):
+            plt.vlines(0,np.amin(Points[:,dim2,:]), np.amax(Points[:,dim2,:]), alpha=0.5, linestyle = ':')
+        if not all(x>=0 for x in Points[:,dim2,:].flatten()):
+            plt.hlines(0,np.amin(Points[:,dim1,:]), np.amax(Points[:,dim1,:]), alpha=0.5, linestyle = ':')
+        plt.xlabel(descr[0][0].upper() + descr[0][1:] + suff0)
+        plt.ylabel(descr[1][0].upper() + descr[1][1:] + suff1)
+        if type_Normalisation == 'by curve':
+            plt.title(title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ')\n' + 'Normalisation curve by curve' + '\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
+        else:
+            plt.title(title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ')\n' + 'Normalisation on all the curves ' + '\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
+
+
+
+    elif type_Temporal =='differential':
+        # Construction de la matrice Points_diff
+        Points_diff = np.zeros((Points.shape[0],Points.shape[1],Points.shape[2]-1))
+        for i in range(Points.shape[2]-1):
+            Points_diff[:,:,i] = Points[:,:,i+1]-Points[:,:,i]
+        for instrument in liste_timbres_or_scores:
+            timbre = dic[instrument]-1
+            if params.visualize_trajectories:
+                plt.plot(Points_diff[timbre,dim1,:].tolist(), Points_diff[timbre,dim2,:].tolist(), color ='C{}'.format(timbre),ls = '--',marker = 'o', label = instrument)
+            if params.visualize_time_grouping:
+                for t in range(len(Points_diff[timbre,dim1,:])):
+                    plt.plot(Points_diff[timbre,dim1,:].tolist()[t], Points_diff[timbre,dim2,:].tolist()[t], color ='C{}'.format(t),ls = '--',marker = 'o')
+            for t in range(len(Points_diff[timbre,dim1,:].tolist())):
+                ax.annotate(' {}'.format(t+1), (Points_diff[timbre,dim1,:][t], Points_diff[timbre,dim2,:][t]), color='black')
+
+        if not all(x>=0 for x in Points_diff[:,dim1,:].flatten()):
+            plt.vlines(0,np.amin(Points_diff[:,dim2,:]), np.amax(Points_diff[:,dim2,:]), alpha=0.5, linestyle = ':')
+        if not all(x>=0 for x in Points_diff[:,dim2,:].flatten()):
+            plt.hlines(0,np.amin(Points_diff[:,dim1,:]), np.amax(Points_diff[:,dim1,:]), alpha=0.5, linestyle = ':')
+
+        plt.xlabel(descr[0][0].upper() + descr[0][1:] + suff0 + ' evolution')
+        plt.ylabel(descr[1][0].upper() + descr[1][1:] + suff1 + ' evolution')
+        plt.title(title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ' evolution' + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ' evolution'+ ')\n' + 'Normalisation ' + type_Normalisation[3:] + ' ' + type_Normalisation + '\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
+
+    plt.legend(frameon=True, framealpha=0.75)
+    plt.show()
+
+
 
 if params.oneInstrument:
 
     # CHARGEMENT DES SONS ET DE LA PARTITION
-    title = 'CadenceM2_T4'
+    title = 'Cadence_M1'
     instrument = 'Organ'
+    duration = 9.0
     #Palestrina, PalestrinaM, SuiteAccords, AccordsParalleles, 'SuiteAccordsOrgue', 'SuiteAccordsPiano', 'CadenceM','CadenceM2','AccordsM', 'SuiteAccordsViolin', Schubert
     # y, sr = librosa.load('Exemples/'+title+'.wav')
     # y1, sr = librosa.load('Exemples/'+title+'-Basse.wav')
     # y2, sr = librosa.load('Exemples/'+title+'-Alto.wav')
     # y3, sr = librosa.load('Exemples/'+title+'-Soprano.wav')
     # y4, sr = librosa.load('Exemples/'+title+'-Tenor.wav')
-    y, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'.wav')
-    y1, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Basse.wav')
-    y2, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Alto.wav')
-    y3, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Soprano.wav')
-    y4, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Tenor.wav')
+    y, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'.wav', duration = duration)
+    y1, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Basse.wav', duration = duration)
+    y2, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Alto.wav', duration = duration)
+    y3, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Soprano.wav', duration = duration)
+    y4, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Tenor.wav', duration = duration)
 
     Notemin = 'C3' #'SuiteAccordsOrgue': A2, #Purcell : C2, #Schubert : E2, PurcellRecord : C1
     Notemax = 'E9'
@@ -1233,7 +1458,7 @@ if params.oneInstrument:
         T_att = getattr(params, 'paramsDetOnsets'+'_'+title)[4]
 
     # Chargement de onset_frames
-    def OpenFrames(title = title):
+    def OpenFrames(title):
         #Avec Sonic Visualiser
         if os.path.exists('Onset_given_'+title+'.txt'):
             onsets = []
@@ -1251,14 +1476,14 @@ if params.oneInstrument:
                 onset_frames = pickle.load(f)
         else: onset_frames = []
         return onset_frames
-    onset_frames = OpenFrames()
+    onset_frames = OpenFrames('Cadence_M')
 
     # CRÉATION DE L'INSTANCE DE CLASSE
     S = SignalSepare(y, sr, [y1,y2,y3,y4], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score, instrument)
     S.DetectionOnsets()
-    # with open('Onset_given_'+title+'_T', 'wb') as g:
+    # with open('Onset_given_Cadence_M', 'wb') as g:
     #      pickle.dump(S.onset_frames, g)
-    space = ['concordance']
+    space = []
     #'roughness', 'harmonicity','concordance','concordance3','concordanceTot','harmonicChange','diffConcordance','crossConcordance','crossConcordanceTot'
     S.Clustering()
     if params.spectrRug_Simpl: S.SimplifySpectrum()
@@ -1269,16 +1494,12 @@ if params.oneInstrument:
 
 
 
-
 if params.compare_instruments:
 
-    # PARAMETRES
-    type_Temporal = params.type_Temporal
-    type_Normalisation = params.type_Normalisation
+
 
     liste_timbres = ['Bourdon8', 'Cheminée8', 'Flûte4', 'Flûte2', 'Octave2','Brd + Chm', 'Brd + Fl4', 'Chm + Fl2', 'Chm + Fl4', 'Fl4 + Fl2', 'Tutti']
-    N_timbres = len(liste_timbres)
-    dic_timbres = {liste_timbres[i]:i+1 for i in range(N_timbres)}
+    dic_timbres = {liste_timbres[i]:i+1 for i in range(len(liste_timbres))}
     spaceStat_NoCtx = ['roughness', 'harmonicity', 'concordance', 'concordanceTot', 'concordance3']
     spaceStat_Ctx = ['harmonicityContext', 'roughnessContext']
     spaceStat = spaceStat_NoCtx + spaceStat_Ctx
@@ -1289,207 +1510,15 @@ if params.compare_instruments:
     space = spaceDyn_NoCtx
 
     title = 'CadenceM2'
-
-    # Chargement de onset_frames
-    def OpenFrames(title = ''):
-        #Avec Sonic Visualiser
-        if os.path.exists('Onset_given_'+title+'.txt'):
-            onsets = []
-            with open('Onset_given_'+title+'.txt','r') as f:
-                for line in f:
-                    l = line.split()
-                    onsets.append(float(l[0]))
-            onset_times = np.asarray(onsets)
-            onset_frames = librosa.time_to_frames(onset_times, sr=sr, hop_length = STEP)
-
-        #Avec ma méthode de visualisation
-        elif os.path.exists('Onset_given_'+title):
-            with open('Onset_given_'+title, 'rb') as f:
-            # with open('Onset_given_2et3Notes', 'rb') as f:
-                onset_frames = pickle.load(f)
-        else: onset_frames = []
-        return onset_frames
-    onset_frames = OpenFrames()
-
+    duration = 9.0
+    score = 'Exemples/'+ title +'-score.png'
     Notemin = 'C3'
     Notemax = 'E9'
-    score = 'Exemples/'+ title +'-score.png'
-
-
-    def Construction_Points(liste_timbres = liste_timbres, space = space, filename = 'Points.npy'):
-        Points = []
-        for instrument in liste_timbres:
-            # CHARGEMENT DES SONS ET DE LA PARTITION
-            y, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'_T{}'.format(dic_timbres[instrument])+'.wav')
-            y1, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'_T{}'.format(dic_timbres[instrument])+'-Basse.wav')
-            y2, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'_T{}'.format(dic_timbres[instrument])+'-Alto.wav')
-            y3, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'_T{}'.format(dic_timbres[instrument])+'-Soprano.wav')
-            y4, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'_T{}'.format(dic_timbres[instrument])+'-Tenor.wav')
-
-            # CRÉATION DE L'INSTANCE DE CLASSE
-            S = SignalSepare(y, sr, [y1,y2,y3,y4], Notemin, Notemax,onset_frames,score = score,instrument = instrument)
-            S.DetectionOnsets()
-            S.Clustering()
-            if params.spectrRug_Simpl: S.SimplifySpectrum()
-            # S.Context()
-            S.ComputeDescripteurs(space = space)
-
-            # CRÉATION DE POINTS
-            Points.append(S.Points(space))
-
-
-        Points = np.asarray(Points)
-        print(Points.shape)
-        np.save(filename, Points) # save
-
-
-    # Fonction qui normalise la matrice Points
-    def Normalise(Points, type_Normalisation = type_Normalisation):
-        if type_Normalisation == 'by timbre':
-            max = np.amax(Points, axis = (0,2))
-            for descr in range(Points.shape[1]):
-                Points[:,descr,:] /= max[descr]
-        elif type_Normalisation == 'by curve':
-            max = np.amax(Points, axis = 2)
-            for timbre in range(Points.shape[0]):
-                for descr in range(Points.shape[1]):
-                    Points[timbre,descr,:] /= max[timbre,descr]
-        return Points
-
-    # Fonction qui calcule la matrice des écart-types sur tous les timbres
-    def Dispersion(Points,type_Temporal = type_Temporal):
-        if type_Temporal == 'static':
-            Disp = np.std(Points,axis = 0)
-        elif type_Temporal == 'differential':
-            Points_diff = np.zeros((Points.shape[0],Points.shape[1],Points.shape[2]-1))
-            for i in range(Points.shape[2]-1):
-                Points_diff[:,:,i] = Points[:,:,i+1]-Points[:,:,i]
-            Disp = np.std(Points_diff,axis = 0)
-        Disp_by_descr = np.mean(Disp, axis = 1)
-        Disp_by_time = np.linalg.norm(Disp, axis = 0)
-        return Disp, Disp_by_descr,Disp_by_time
-
-    def Inerties(Points, type_Temporal = type_Temporal):
-        if type_Temporal == 'static':
-            Inertie_tot = np.std(Points, axis = (0,2))
-            Mean = np.mean(Points,axis = 0)
-        elif type_Temporal == 'differential':
-            Points_diff = np.zeros((Points.shape[0],Points.shape[1],Points.shape[2]-1))
-            for i in range(Points.shape[2]-1):
-                Points_diff[:,:,i] = Points[:,:,i+1]-Points[:,:,i]
-            Inertie_tot = np.std(Points_diff, axis = (0,2))
-            Mean = np.mean(Points_diff, axis = 0)
-        Inertie_inter = np.std(Mean, axis = 1)
-        return Inertie_tot, Inertie_inter
-
-
-    # Fonction qui trie les descripteurs en fonction du minimum de dispersion
-    def MinimizeDispersion(Disp_by_descr, space = space):
-        disp_sorted = np.sort(Disp_by_descr)
-        descr_sorted = [space[i] for i in np.argsort(Disp_by_descr)]
-        return descr_sorted, disp_sorted
-
-    # Fonction qui trie les descripteurs en fonction du minimum de dispersion
-    def MaximizeSeparation(Inertie_tot, Inertie_inter, space = space):
-        inert_inter_sorted = np.sort(Inertie_inter)
-        inert_tot_sorted = [Inertie_tot[i] for i in np.argsort(Inertie_inter)]
-        descr_inert_sorted = [space[i] for i in np.argsort(Inertie_inter)]
-        return inert_inter_sorted, inert_tot_sorted, descr_inert_sorted
-
-
-    def Clustered(Points, spacePlot, space = space, liste_timbres = liste_timbres, type_Temporal = type_Temporal):
-        ind_descr = [space.index(descr) for descr in spacePlot]
-        ind_instrument = [dic_timbres[instrument]-1 for instrument in liste_timbres]
-        if type_Temporal == 'static':
-            Points_sub = Points[[ind_instrument],[ind_descr],:]
-        if type_Temporal == 'differential':
-            Points_diff = np.zeros((Points.shape[0],Points.shape[1],Points.shape[2]-1))
-            for i in range(Points.shape[2]-1):
-                Points_diff[:,:,i] = Points[:,:,i+1]-Points[:,:,i]
-            Points_sub = Points_diff[ind_instrument][:,ind_descr]
-        disp_traj = np.sum(np.linalg.norm(np.std(Points_sub,axis = 0), axis = 0))
-        inertie_inter = np.std(np.mean(Points_sub,axis = 0), axis = 1)
-        inertie_tot = np.std(Points_sub, axis = (0,2))
-        sep = np.inner(inertie_inter, inertie_inter) / np.inner(inertie_tot, inertie_tot)
-        print('Dispersion : {} \nSeparation : {}'.format(disp_traj, sep))
 
 
 
-    # Visualisation
-    def Visualize(Points, space = space, descr = space[0:2], liste_timbres = liste_timbres, type_Temporal = type_Temporal):
-        dim1 = space.index(descr[0])
-        dim2 = space.index(descr[1])
 
-        # Fonction qui renvoie True si deux listes ont une intersection commune
-        def intersect(lst1, lst2):
-            inter = False
-            i = 0
-            while (not inter) & (i<len(lst1)):
-                if (lst1[i] in lst2): inter = True
-                i += 1
-            return inter
-
-
-
-        # Détermination de la présence simultanée de descripteurs statiques et dynamiques dans space, et le cas échéant attribution du suffixe 'evolution' aux descr stat
-        suff0, suff1 = '',''
-        if intersect(space,spaceStat) & intersect(space,spaceDyn):
-            if descr[0] in spaceStat: suff0 = ' evolution'
-            if descr[1] in spaceStat: suff1 = ' evolution'
-
-        plt.figure(figsize=(8, 7))
-        ax = plt.subplot()
-
-
-        if type_Temporal =='static':
-            for instrument in liste_timbres:
-                timbre = dic_timbres[instrument]-1
-                if params.visualize_trajectories:
-                    plt.plot(Points[timbre,dim1,:].tolist(), Points[timbre,dim2,:].tolist(), color ='C{}'.format(timbre),ls = '--',marker = 'o', label = instrument)
-                if params.visualize_time_grouping:
-                    for t in range(len(Points[timbre,dim1,:])):
-                        plt.plot(Points[timbre,dim1,:].tolist()[t], Points[timbre,dim2,:].tolist()[t], color ='C{}'.format(t),ls = '--',marker = 'o')
-                for t in range(len(Points[timbre,dim1,:].tolist())):
-                    ax.annotate(' {}'.format(t+1), (Points[timbre,dim1,:][t], Points[timbre,dim2,:][t]), color='black')
-            if not all(x>=0 for x in Points[:,dim1,:].flatten()):
-                plt.vlines(0,np.amin(Points[:,dim2,:]), np.amax(Points[:,dim2,:]), alpha=0.5, linestyle = ':')
-            if not all(x>=0 for x in Points[:,dim2,:].flatten()):
-                plt.hlines(0,np.amin(Points[:,dim1,:]), np.amax(Points[:,dim1,:]), alpha=0.5, linestyle = ':')
-            plt.xlabel(descr[0][0].upper() + descr[0][1:] + suff0)
-            plt.ylabel(descr[1][0].upper() + descr[1][1:] + suff1)
-            plt.title(title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ')\n' + 'Normalisation ' + type_Normalisation[3:] + ' ' + type_Normalisation + '\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
-
-
-        elif type_Temporal =='differential':
-            # Construction de la matrice Points_diff
-            Points_diff = np.zeros((Points.shape[0],Points.shape[1],Points.shape[2]-1))
-            for i in range(Points.shape[2]-1):
-                Points_diff[:,:,i] = Points[:,:,i+1]-Points[:,:,i]
-            for instrument in liste_timbres:
-                timbre = dic_timbres[instrument]-1
-                if params.visualize_trajectories:
-                    plt.plot(Points_diff[timbre,dim1,:].tolist(), Points_diff[timbre,dim2,:].tolist(), color ='C{}'.format(timbre),ls = '--',marker = 'o', label = instrument)
-                if params.visualize_time_grouping:
-                    for t in range(len(Points_diff[timbre,dim1,:])):
-                        plt.plot(Points_diff[timbre,dim1,:].tolist()[t], Points_diff[timbre,dim2,:].tolist()[t], color ='C{}'.format(t),ls = '--',marker = 'o')
-                for t in range(len(Points_diff[timbre,dim1,:].tolist())):
-                    ax.annotate(' {}'.format(t+1), (Points_diff[timbre,dim1,:][t], Points_diff[timbre,dim2,:][t]), color='black')
-
-            if not all(x>=0 for x in Points_diff[:,dim1,:].flatten()):
-                plt.vlines(0,np.amin(Points_diff[:,dim2,:]), np.amax(Points_diff[:,dim2,:]), alpha=0.5, linestyle = ':')
-            if not all(x>=0 for x in Points_diff[:,dim2,:].flatten()):
-                plt.hlines(0,np.amin(Points_diff[:,dim1,:]), np.amax(Points_diff[:,dim1,:]), alpha=0.5, linestyle = ':')
-
-            plt.xlabel(descr[0][0].upper() + descr[0][1:] + suff0 + ' evolution')
-            plt.ylabel(descr[1][0].upper() + descr[1][1:] + suff1 + ' evolution')
-            plt.title(title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ' evolution' + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ' evolution'+ ')\n' + 'Normalisation ' + type_Normalisation[3:] + ' ' + type_Normalisation + '\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
-
-        plt.legend(frameon=True, framealpha=0.75)
-        plt.show()
-
-
-
-    # Construction_Points(filename = 'Points_Dyn.npy')
+    # Construction_Points(liste_timbres, title, space, filename = 'Points_Dyn.npy', Notemin, Notemax, score = score, duration = duration)
 
     # Points = np.concatenate((np.load('Points1.npy'), np.load('Points2.npy')), axis=0)
     # np.save('Points_Stat.npy', Points)
@@ -1498,12 +1527,54 @@ if params.compare_instruments:
     Points = Normalise(Points)
     Disp, Disp_by_descr,Disp_by_time = Dispersion(Points)
     # Inertie_tot, Inertie_inter = Inerties(Points)
-    descr_sorted, disp_sorted = MinimizeDispersion(Disp_by_descr)
-    # inert_inter_sorted, inert_tot_sorted, descr_inert_sorted = MaximizeSeparation(Inertie_tot, Inertie_inter)
+    descr_sorted, disp_sorted = MinimizeDispersion(Disp_by_descr, space)
+    # inert_inter_sorted, inert_tot_sorted, descr_inert_sorted = MaximizeSeparation(Inertie_tot, Inertie_inter, space)
     # spacePlot = ['harmonicChange', 'diffConcordance']
     spacePlot = descr_sorted[0:2]
-    Clustered(Points, spacePlot)
-    Visualize(Points, descr = spacePlot)#, liste_timbres = ['Bourdon8', 'Cheminée8','Brd + Chm','Tutti'])
+    Clustered(Points, spacePlot, space, liste_timbres, dic_timbres)
+    Visualize(Points, spacePlot, space, liste_timbres, dic_timbres)#, liste_timbres_or_scores = ['Bourdon8', 'Cheminée8','Brd + Chm','Tutti'])
+
+
+
+if params.compare_scores:
+    # title = 'Cadence_M'
+    title = 'Test_identique'
+    duration = 9.0
+    liste_scores = ['Cadence 1', 'Cadence 2','Cadence 3', 'Cadence 4', 'Cadence 5', 'Cadence 6', 'Cadence 7', 'Cadence 8', 'Cadence 9' ]
+    # liste_scores = ['Natural', 'Tempered']
+    dic_scores = {liste_scores[i]:i+1 for i in range(len(liste_scores))}
+
+    spaceStat_NoCtx = ['roughness', 'harmonicity', 'concordance', 'concordanceTot', 'concordance3']
+    spaceStat_Ctx = ['harmonicityContext', 'roughnessContext']
+    spaceStat = spaceStat_NoCtx + spaceStat_Ctx
+    spaceDyn_NoCtx = ['harmonicChange', 'diffConcordance', 'crossConcordance', 'crossConcordanceTot']
+    spaceDyn_Ctx = ['harmonicNovelty','diffConcordanceContext', 'diffRoughnessContext']
+    spaceDyn = spaceDyn_NoCtx + spaceDyn_Ctx
+
+    space = spaceStat_NoCtx
+    Notemin = 'C2'
+    Notemax = 'E9'
+
+    # Construction_Points(liste_scores, title, space, Notemin, Notemax, dic_scores, filename = 'Points_Test_Id2_dyn.npy', name_OpenFrames = title, duration = duration)
+
+    Points = np.load('Points_Score_Stat2.npy')
+    liste_scores = ['Cadence 2', 'Cadence 9']
+    liste_scores = liste_scores
+    # Points = Normalise(Points, liste_scores, dic_scores)
+    print(Points.shape)
+    # Disp, Disp_by_descr,Disp_by_time = Dispersion(Points)
+    # # Inertie_tot, Inertie_inter = Inerties(Points)
+    # descr_sorted, disp_sorted = MinimizeDispersion(Disp_by_descr, space)
+    # # inert_inter_sorted, inert_tot_sorted, descr_inert_sorted = MaximizeSeparation(Inertie_tot, Inertie_inter, space)
+    # # spacePlot = ['concordance3', 'concordanceTot']
+    # spacePlot = ['concordance', 'harmonicity']
+    # # spacePlot = descr_sorted[0:2]
+    #
+    # Clustered(Points, spacePlot, space, liste_scores, dic_scores)
+    # Visualize(Points, spacePlot, space, liste_scores, dic_scores)
+
+
+
 
 
 

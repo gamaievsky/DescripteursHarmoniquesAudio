@@ -3,12 +3,13 @@
 import numpy as np
 
 oneInstrument = False
-compare_instruments = True
+compare_instruments = False
+compare_scores = True
 
-type_Temporal = 'differential' #'static', 'differential'
+type_Temporal = 'static' #'static', 'differential'
 type_Normalisation = 'by timbre' #'by curve', 'by timbre'
 visualize_time_grouping = True
-visualize_trajectories = False
+visualize_trajectories = True
 
 correlation = False
 pca = False
@@ -46,7 +47,7 @@ SemiManual = False
 H =  30
 #Filtre sur les onsets
 T = 0.3 #(en secondes)
-T_att = 0.1
+T_att = 0.2
 
 #(α,β,H,T,T_att)
 paramsDetOnsets_Palestrina = [172, 1, 30, 0.3, 0.1]
