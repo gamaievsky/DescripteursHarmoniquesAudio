@@ -254,8 +254,12 @@ class SignalSepare:
         self.chromSync = np.zeros((self.n_bins,self.n_frames))
         self.n_att = int(librosa.time_to_frames(T_att, sr=self.sr, hop_length = STEP))
         for j in range(self.n_frames):
-            for i in range(self.n_bins):
-                self.chromSync[i,j] = np.median(self.Chrom[i][(self.onset_frames[j]+self.n_att):(self.onset_frames[j+1]-self.n_att)])
+            if j==0:
+                for i in range(self.n_bins):
+                    self.chromSync[i,j] = np.median(self.Chrom[i][self.onset_frames[j]:self.onset_frames[j+1]])
+            else:
+                for i in range(self.n_bins):
+                    self.chromSync[i,j] = np.median(self.Chrom[i][(self.onset_frames[j]+self.n_att):(self.onset_frames[j+1]-self.n_att)])
         self.chromSync[np.isnan(self.chromSync)] = 0
         self.chromSyncDB = librosa.amplitude_to_db(self.chromSync, ref=np.max)
 
@@ -287,8 +291,12 @@ class SignalSepare:
 
                 self.chromPistesSync.append(np.zeros((self.n_bins,self.n_frames)))
                 for j in range(self.n_frames):
-                    for i in range(self.n_bins):
-                        self.chromPistesSync[k][i,j] = np.median(ChromPistes[k][i][(self.onset_frames[j]+self.n_att):(self.onset_frames[j+1]-self.n_att)])
+                    if j==0:
+                        for i in range(self.n_bins):
+                            self.chromPistesSync[k][i,j] = np.median(ChromPistes[k][i][self.onset_frames[j]:self.onset_frames[j+1]])
+                    else:
+                        for i in range(self.n_bins):
+                            self.chromPistesSync[k][i,j] = np.median(ChromPistes[k][i][(self.onset_frames[j]+self.n_att):(self.onset_frames[j+1]-self.n_att)])
 
             # Calcul de l'énergie des pistes
             self.energyPistes = np.zeros((self.n_pistes, self.n_frames))
@@ -297,19 +305,22 @@ class SignalSepare:
                     self.energyPistes[k,t] = np.sum(np.multiply(self.chromPistesSync[k][:,t], self.chromPistesSync[k][:,t]))
 
             # Calcul de la matrice d'activation (pour savoir quelles voix contiennent des notes à quel moment) + mise à zéro des pistes sans note
-            max_energy = np.amax(self.energyPistes)
+            # Par défaut, tout est à 1, ie dans chaque frame chaque piste joue une note
             self.activation = np.ones((self.n_pistes, self.n_frames))
-            for k in range(self.n_pistes):
-                for t in range(self.n_frames):
-                    if (self.energyPistes[k,t] < params.seuil_activation * max_energy):
-                        self.activation[k,t] = 0
-                        self.chromPistesSync[k][:,t] = 0
-            self.activation[:,0] = 0
-            self.activation[:,self.n_frames-1] = 0
-
+            if params.calcul_nombre_notes:
+                max_energy = np.amax(self.energyPistes, axis = 1)
+                for k in range(self.n_pistes):
+                    for t in range(self.n_frames):
+                        if (self.energyPistes[k,t] < params.seuil_activation * max_energy[k]):
+                            self.activation[k,t] = 0
+                            self.chromPistesSync[k][:,t] = 0
+                self.activation[:,0] = 0
+                self.activation[:,self.n_frames-1] = 0
 
             # Calcul du nombre de notes
             self.n_notes = np.sum(self.activation, axis=0)
+            self.n_notes[0] = 0
+            self.n_notes[-1] = 0
 
 
     def Context(self):
@@ -673,6 +684,8 @@ class SignalSepare:
 
         virtualNotes = librosa.hz_to_note([self.fmin * (2**((i-len(SpecHarm)+dec+1)/BINS_PER_OCTAVE)) for i in self.virtualPitch] , cents = False)
         print(virtualNotes[1:self.n_frames-1])
+        self.harmonicity[0]=0
+        self.harmonicity[self.n_frames-1]=0
 
 
     def HarmonicityContext(self):
@@ -1203,7 +1216,7 @@ type_Normalisation = params.type_Normalisation
 
 
 
-def Construction_Points(liste_timbres_or_scores, title, space, Notemin, Notemax, dic, filename = 'Points.npy', score = [], instrument = 'Organ', name_OpenFrames = '', duration = None):
+def Construction_Points(liste_timbres_or_scores, title, space, Notemin, Notemax, dic, filename = 'Points.npy', score = [], instrument = 'Organ', name_OpenFrames = '', duration = None, sr = 22050):
     # Chargement de onset_frames
     def OpenFrames(title):
         #Avec Sonic Visualiser
@@ -1328,16 +1341,15 @@ def MaximizeSeparation(Inertie_tot, Inertie_inter, space):
     return inert_inter_sorted, inert_tot_sorted, descr_inert_sorted
 
 
-def Clustered(Points, spacePlot, space, liste_timbres_or_scores, dic, type_Temporal = type_Temporal):
+def Clustered(Points, spacePlot, space, type_Temporal = type_Temporal):
     ind_descr = [space.index(descr) for descr in spacePlot]
-    ind_instrument = [dic[instrument]-1 for instrument in liste_timbres_or_scores]
     if type_Temporal == 'static':
-        Points_sub = Points[ind_instrument][:,ind_descr]
+        Points_sub = Points[:,ind_descr]
     if type_Temporal == 'differential':
         Points_diff = np.zeros((Points.shape[0],Points.shape[1],Points.shape[2]-1))
         for i in range(Points.shape[2]-1):
             Points_diff[:,:,i] = Points[:,:,i+1]-Points[:,:,i]
-        Points_sub = Points_diff[ind_instrument][:,ind_descr]
+        Points_sub = Points_diff[:,ind_descr]
     disp_traj = np.sum(np.linalg.norm(np.std(Points_sub,axis = 0), axis = 0))
     inertie_inter = np.std(np.mean(Points_sub,axis = 0), axis = 1)
     inertie_tot = np.std(Points_sub, axis = (0,2))
@@ -1371,10 +1383,9 @@ def Visualize(Points, descr, space, liste_timbres_or_scores, dic, type_Temporal 
 
 
     if type_Temporal =='static':
-        for instrument in liste_timbres_or_scores:
-            timbre = dic[instrument]-1
+        for timbre, instrument in enumerate(liste_timbres_or_scores):
             if params.visualize_trajectories:
-                plt.plot(Points[timbre,dim1,:].tolist(), Points[timbre,dim2,:].tolist(), color ='C{}'.format(timbre),ls = '--',marker = 'o', label = instrument)
+                plt.plot(Points[timbre,dim1,:].tolist(), Points[timbre,dim2,:].tolist(), color ='C{}'.format(dic[instrument]-1),ls = '--',marker = 'o', label = instrument)
             if params.visualize_time_grouping:
                 for t in range(len(Points[timbre,dim1,:])):
                     plt.plot(Points[timbre,dim1,:].tolist()[t], Points[timbre,dim2,:].tolist()[t], color ='C{}'.format(t),ls = '--',marker = 'o')
@@ -1398,10 +1409,9 @@ def Visualize(Points, descr, space, liste_timbres_or_scores, dic, type_Temporal 
         Points_diff = np.zeros((Points.shape[0],Points.shape[1],Points.shape[2]-1))
         for i in range(Points.shape[2]-1):
             Points_diff[:,:,i] = Points[:,:,i+1]-Points[:,:,i]
-        for instrument in liste_timbres_or_scores:
-            timbre = dic[instrument]-1
+        for timbre, instrument in enumerate(liste_timbres_or_scores):
             if params.visualize_trajectories:
-                plt.plot(Points_diff[timbre,dim1,:].tolist(), Points_diff[timbre,dim2,:].tolist(), color ='C{}'.format(timbre),ls = '--',marker = 'o', label = instrument)
+                plt.plot(Points_diff[timbre,dim1,:].tolist(), Points_diff[timbre,dim2,:].tolist(), color ='C{}'.format(dic[instrument]-1),ls = '--',marker = 'o', label = instrument)
             if params.visualize_time_grouping:
                 for t in range(len(Points_diff[timbre,dim1,:])):
                     plt.plot(Points_diff[timbre,dim1,:].tolist()[t], Points_diff[timbre,dim2,:].tolist()[t], color ='C{}'.format(t),ls = '--',marker = 'o')
@@ -1425,7 +1435,7 @@ def Visualize(Points, descr, space, liste_timbres_or_scores, dic, type_Temporal 
 if params.oneInstrument:
 
     # CHARGEMENT DES SONS ET DE LA PARTITION
-    title = 'Cadence_M1'
+    title = 'Cadence_M3'
     instrument = 'Organ'
     duration = 9.0
     #Palestrina, PalestrinaM, SuiteAccords, AccordsParalleles, 'SuiteAccordsOrgue', 'SuiteAccordsPiano', 'CadenceM','CadenceM2','AccordsM', 'SuiteAccordsViolin', Schubert
@@ -1440,7 +1450,7 @@ if params.oneInstrument:
     y3, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Soprano.wav', duration = duration)
     y4, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Tenor.wav', duration = duration)
 
-    Notemin = 'C3' #'SuiteAccordsOrgue': A2, #Purcell : C2, #Schubert : E2, PurcellRecord : C1
+    Notemin = 'C2' #'SuiteAccordsOrgue': A2, #Purcell : C2, #Schubert : E2, PurcellRecord : C1
     Notemax = 'E9'
     # score = 'Exemples/'+ title +'-score.png'
     score = 'Exemples/CadenceM2-score.png'
@@ -1476,21 +1486,26 @@ if params.oneInstrument:
                 onset_frames = pickle.load(f)
         else: onset_frames = []
         return onset_frames
-    onset_frames = OpenFrames('Cadence_M')
+    onset_frames = OpenFrames('')
 
     # CRÉATION DE L'INSTANCE DE CLASSE
     S = SignalSepare(y, sr, [y1,y2,y3,y4], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score, instrument)
     S.DetectionOnsets()
     # with open('Onset_given_Cadence_M', 'wb') as g:
     #      pickle.dump(S.onset_frames, g)
-    space = []
+    space = ['concordance']
     #'roughness', 'harmonicity','concordance','concordance3','concordanceTot','harmonicChange','diffConcordance','crossConcordance','crossConcordanceTot'
     S.Clustering()
     if params.spectrRug_Simpl: S.SimplifySpectrum()
     S.Context()
     S.ComputeDescripteurs(space = space)
-    S.Affichage(space = space, end = 10)
+    S.Affichage(space = space, end = duration)
     # S.Points(space)
+
+
+    # Nmin = int(S.sr/(S.fmax*(2**(1/BINS_PER_OCTAVE)-1)))
+    # Nmax = int((S.sr/(S.fmin*(2**(1/BINS_PER_OCTAVE)-1))))
+    # print(Nmin/S.sr, Nmax/S.sr)
 
 
 
@@ -1535,13 +1550,12 @@ if params.compare_instruments:
     Visualize(Points, spacePlot, space, liste_timbres, dic_timbres)#, liste_timbres_or_scores = ['Bourdon8', 'Cheminée8','Brd + Chm','Tutti'])
 
 
-
 if params.compare_scores:
     # title = 'Cadence_M'
-    title = 'Test_identique'
+    title = 'Cadence_Norm_M'
     duration = 9.0
     liste_scores = ['Cadence 1', 'Cadence 2','Cadence 3', 'Cadence 4', 'Cadence 5', 'Cadence 6', 'Cadence 7', 'Cadence 8', 'Cadence 9' ]
-    # liste_scores = ['Natural', 'Tempered']
+    # liste_scores = ['Cadence 3', 'Cadence 4','Cadence 5']
     dic_scores = {liste_scores[i]:i+1 for i in range(len(liste_scores))}
 
     spaceStat_NoCtx = ['roughness', 'harmonicity', 'concordance', 'concordanceTot', 'concordance3']
@@ -1551,29 +1565,25 @@ if params.compare_scores:
     spaceDyn_Ctx = ['harmonicNovelty','diffConcordanceContext', 'diffRoughnessContext']
     spaceDyn = spaceDyn_NoCtx + spaceDyn_Ctx
 
-    space = spaceStat_NoCtx
+    space = spaceDyn_NoCtx
     Notemin = 'C2'
     Notemax = 'E9'
 
-    # Construction_Points(liste_scores, title, space, Notemin, Notemax, dic_scores, filename = 'Points_Test_Id2_dyn.npy', name_OpenFrames = title, duration = duration)
+    # Construction_Points(liste_scores, title, space, Notemin, Notemax, dic_scores, filename = 'Points_Dispo_Cad_Norm_Stat.npy', name_OpenFrames = 'Cadence_M', duration = duration)
 
-    Points = np.load('Points_Score_Stat2.npy')
-    liste_scores = ['Cadence 2', 'Cadence 9']
-    liste_scores = liste_scores
-    # Points = Normalise(Points, liste_scores, dic_scores)
-    print(Points.shape)
-    # Disp, Disp_by_descr,Disp_by_time = Dispersion(Points)
-    # # Inertie_tot, Inertie_inter = Inerties(Points)
-    # descr_sorted, disp_sorted = MinimizeDispersion(Disp_by_descr, space)
-    # # inert_inter_sorted, inert_tot_sorted, descr_inert_sorted = MaximizeSeparation(Inertie_tot, Inertie_inter, space)
-    # # spacePlot = ['concordance3', 'concordanceTot']
-    # spacePlot = ['concordance', 'harmonicity']
-    # # spacePlot = descr_sorted[0:2]
-    #
-    # Clustered(Points, spacePlot, space, liste_scores, dic_scores)
-    # Visualize(Points, spacePlot, space, liste_scores, dic_scores)
+    Points = np.load('Points_Dispo_Cad_Dyn.npy')
+    # liste_scores = ['Cadence 3','Cadence 4','Cadence 5']
+    Points = Normalise(Points, liste_scores, dic_scores)
+    Disp, Disp_by_descr,Disp_by_time = Dispersion(Points)
+    # Inertie_tot, Inertie_inter = Inerties(Points)
+    descr_sorted, disp_sorted = MinimizeDispersion(Disp_by_descr, space)
+    # inert_inter_sorted, inert_tot_sorted, descr_inert_sorted = MaximizeSeparation(Inertie_tot, Inertie_inter, space)
+    # spacePlot = ['concordance3', 'concordanceTot']
+    spacePlot = ['harmonicChange', 'diffConcordance']
+    # spacePlot = descr_sorted[0:2]
 
-
+    Clustered(Points, spacePlot, space)
+    Visualize(Points, spacePlot, space, liste_scores, dic_scores)
 
 
 

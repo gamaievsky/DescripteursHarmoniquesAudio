@@ -33,6 +33,8 @@ decompo_hpss = True
 margin = 3
 
 
+
+
 #NFFT = 2 ** 11 #(> 2**10) duration of analysis window in samples for feature extraction only.
 #STEP = NFFT / 2 #(>2**6) et (STEP < NFFT) 50% overlap between time windows / also sub-frequency after analyzing spectral structure.
 
@@ -47,7 +49,7 @@ SemiManual = False
 H =  30
 #Filtre sur les onsets
 T = 0.3 #(en secondes)
-T_att = 0.2
+T_att = 0.0
 
 #(α,β,H,T,T_att)
 paramsDetOnsets_Palestrina = [172, 1, 30, 0.3, 0.1]
@@ -78,6 +80,7 @@ delOnsets_SchubertRecord, addOnsets_SchubertRecord= 'all',[i + 0.1 for i in [0,2
 triFreq = False
 
 #Matrice d'activation (quelles pistes sont à prendre en compte à quel moment ?)
+calcul_nombre_notes = False
 seuil_activation = 0.01
 
 ## NORMALISATIONS
@@ -104,12 +107,12 @@ norm_concCrossContext = 'chord_by_chord'
 
 
 #PLOT
-plot_onsets = True
+plot_onsets = False
 plot_pistes = False
 plot_partiels = False
 plot_context = False
 plot_decompo_hpss = False
-plot_chromDescr = False
+plot_chromDescr = True
 plot_descr = False
 plot_OneDescr = False
 plot_abstr = False

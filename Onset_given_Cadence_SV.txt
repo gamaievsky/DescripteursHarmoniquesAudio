@@ -1,0 +1,6 @@
+0.03	New Point
+1.505	New Point
+3.005	New Point
+4.505	New Point
+6.005	New Point
+7.505	New Point
