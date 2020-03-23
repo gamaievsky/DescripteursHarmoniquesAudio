@@ -1258,6 +1258,7 @@ def Construction_Points(liste_timbres_or_scores, title, space, Notemin, Notemax,
 
             # CRÉATION DE POINTS
             Points.append(S.Points(space))
+            print(instrument + ': OK')
     if params.compare_scores:
         for score in liste_timbres_or_scores:
             # CHARGEMENT DES SONS ET DE LA PARTITION
@@ -1384,11 +1385,13 @@ def Visualize(Points, descr, space, liste_timbres_or_scores, dic, type_Temporal 
 
     if type_Temporal =='static':
         for timbre, instrument in enumerate(liste_timbres_or_scores):
+            if dic[instrument] <= 10: ls = '--'
+            else: ls = ':'
             if params.visualize_trajectories:
-                plt.plot(Points[timbre,dim1,:].tolist(), Points[timbre,dim2,:].tolist(), color ='C{}'.format(dic[instrument]-1),ls = '--',marker = 'o', label = instrument)
+                plt.plot(Points[timbre,dim1,:].tolist(), Points[timbre,dim2,:].tolist(), color ='C{}'.format(dic[instrument]-1),ls = ls, marker = 'o', label = instrument)
             if params.visualize_time_grouping:
                 for t in range(len(Points[timbre,dim1,:])):
-                    plt.plot(Points[timbre,dim1,:].tolist()[t], Points[timbre,dim2,:].tolist()[t], color ='C{}'.format(t),ls = '--',marker = 'o')
+                    plt.plot(Points[timbre,dim1,:].tolist()[t], Points[timbre,dim2,:].tolist()[t], color ='C{}'.format(t),ls = ls, marker = 'o')
             for t in range(len(Points[timbre,dim1,:].tolist())):
                 ax.annotate(' {}'.format(t+1), (Points[timbre,dim1,:][t], Points[timbre,dim2,:][t]), color='black')
         if not all(x>=0 for x in Points[:,dim1,:].flatten()):
@@ -1397,10 +1400,12 @@ def Visualize(Points, descr, space, liste_timbres_or_scores, dic, type_Temporal 
             plt.hlines(0,np.amin(Points[:,dim1,:]), np.amax(Points[:,dim1,:]), alpha=0.5, linestyle = ':')
         plt.xlabel(descr[0][0].upper() + descr[0][1:] + suff0)
         plt.ylabel(descr[1][0].upper() + descr[1][1:] + suff1)
+        if params.compare_instruments: goal = 'Timbre comparaison'
+        elif params.compare_scores: goal = 'Score comparaison'
         if type_Normalisation == 'by curve':
-            plt.title(title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ')\n' + 'Normalisation curve by curve' + '\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
+            plt.title(goal + '\n' + title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ')\n' + 'Normalisation curve by curve' + '\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
         else:
-            plt.title(title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ')\n' + 'Normalisation on all the curves ' + '\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
+            plt.title(goal + '\n' + title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ')\n' + 'Normalisation on all the curves ' + '\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
 
 
 
@@ -1410,11 +1415,13 @@ def Visualize(Points, descr, space, liste_timbres_or_scores, dic, type_Temporal 
         for i in range(Points.shape[2]-1):
             Points_diff[:,:,i] = Points[:,:,i+1]-Points[:,:,i]
         for timbre, instrument in enumerate(liste_timbres_or_scores):
+            if dic[instrument] <= 10: ls = '--'
+            else: ls = ':'
             if params.visualize_trajectories:
-                plt.plot(Points_diff[timbre,dim1,:].tolist(), Points_diff[timbre,dim2,:].tolist(), color ='C{}'.format(dic[instrument]-1),ls = '--',marker = 'o', label = instrument)
+                plt.plot(Points_diff[timbre,dim1,:].tolist(), Points_diff[timbre,dim2,:].tolist(), color ='C{}'.format(dic[instrument]-1),ls = ls,marker = 'o', label = instrument)
             if params.visualize_time_grouping:
                 for t in range(len(Points_diff[timbre,dim1,:])):
-                    plt.plot(Points_diff[timbre,dim1,:].tolist()[t], Points_diff[timbre,dim2,:].tolist()[t], color ='C{}'.format(t),ls = '--',marker = 'o')
+                    plt.plot(Points_diff[timbre,dim1,:].tolist()[t], Points_diff[timbre,dim2,:].tolist()[t], color ='C{}'.format(t),ls = ls,marker = 'o')
             for t in range(len(Points_diff[timbre,dim1,:].tolist())):
                 ax.annotate(' {}'.format(t+1), (Points_diff[timbre,dim1,:][t], Points_diff[timbre,dim2,:][t]), color='black')
 
@@ -1425,7 +1432,12 @@ def Visualize(Points, descr, space, liste_timbres_or_scores, dic, type_Temporal 
 
         plt.xlabel(descr[0][0].upper() + descr[0][1:] + suff0 + ' evolution')
         plt.ylabel(descr[1][0].upper() + descr[1][1:] + suff1 + ' evolution')
-        plt.title(title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ' evolution' + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ' evolution'+ ')\n' + 'Normalisation ' + type_Normalisation[3:] + ' ' + type_Normalisation + '\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
+        if params.compare_instruments: goal = 'Timbre comparaison'
+        elif params.compare_scores: goal = 'Score comparaison'
+        if type_Normalisation == 'by curve':
+            plt.title(goal + '\n' + title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ' evolution' + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ')\n' + 'Normalisation curve by curve' + '\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
+        else:
+            plt.title(goal + '\n' + title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ' evolution' + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ')\n' + 'Normalisation on all the curves ' + '\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
 
     plt.legend(frameon=True, framealpha=0.75)
     plt.show()
@@ -1513,7 +1525,7 @@ if params.compare_instruments:
 
 
 
-    liste_timbres = ['Bourdon8', 'Cheminée8', 'Flûte4', 'Flûte2', 'Octave2','Brd + Chm', 'Brd + Fl4', 'Chm + Fl2', 'Chm + Fl4', 'Fl4 + Fl2', 'Tutti']
+    liste_timbres = ['Bourdon8', 'Cheminée8', 'Flûte4', 'Flûte2', 'Octave2','Brd + Chm', 'Brd + Fl4', 'Chm + Fl2', 'Chm + Fl4', 'Fl4 + Fl2','Tutti']
     dic_timbres = {liste_timbres[i]:i+1 for i in range(len(liste_timbres))}
     spaceStat_NoCtx = ['roughness', 'harmonicity', 'concordance', 'concordanceTot', 'concordance3']
     spaceStat_Ctx = ['harmonicityContext', 'roughnessContext']
@@ -1524,35 +1536,31 @@ if params.compare_instruments:
 
     space = spaceDyn_NoCtx
 
-    title = 'CadenceM2'
+    title = 'Cadence_M5'
     duration = 9.0
-    score = 'Exemples/'+ title +'-score.png'
+    # score = 'Exemples/'+ title +'-score.png'
     Notemin = 'C3'
     Notemax = 'E9'
 
+    # Construction_Points(liste_timbres, title, space, Notemin, Notemax, dic_timbres,filename = 'Points_Timbres_Dyn.npy', name_OpenFrames = 'Cadence_M', duration = duration)
 
-
-
-    # Construction_Points(liste_timbres, title, space, filename = 'Points_Dyn.npy', Notemin, Notemax, score = score, duration = duration)
-
-    # Points = np.concatenate((np.load('Points1.npy'), np.load('Points2.npy')), axis=0)
-    # np.save('Points_Stat.npy', Points)
-
-    Points = np.load('Points_Dyn.npy')
-    Points = Normalise(Points)
+    Points = np.load('Points_Timbres_CadM_Dyn.npy')
+    # liste_timbres = ['Flûte4', 'Flûte2', 'Octave2','Bourdon8', 'Cheminée8']#, 'Flûte4', 'Flûte2', 'Octave2']
+    Points = Normalise(Points, liste_timbres, dic_timbres)
     Disp, Disp_by_descr,Disp_by_time = Dispersion(Points)
     # Inertie_tot, Inertie_inter = Inerties(Points)
     descr_sorted, disp_sorted = MinimizeDispersion(Disp_by_descr, space)
     # inert_inter_sorted, inert_tot_sorted, descr_inert_sorted = MaximizeSeparation(Inertie_tot, Inertie_inter, space)
-    # spacePlot = ['harmonicChange', 'diffConcordance']
-    spacePlot = descr_sorted[0:2]
-    Clustered(Points, spacePlot, space, liste_timbres, dic_timbres)
+    spacePlot = ['harmonicChange', 'diffConcordance']
+    # spacePlot = descr_sorted[0:2]
+
+    Clustered(Points, spacePlot, space)
     Visualize(Points, spacePlot, space, liste_timbres, dic_timbres)#, liste_timbres_or_scores = ['Bourdon8', 'Cheminée8','Brd + Chm','Tutti'])
 
 
 if params.compare_scores:
     # title = 'Cadence_M'
-    title = 'Cadence_Norm_M'
+    title = 'Cadence_M'
     duration = 9.0
     liste_scores = ['Cadence 1', 'Cadence 2','Cadence 3', 'Cadence 4', 'Cadence 5', 'Cadence 6', 'Cadence 7', 'Cadence 8', 'Cadence 9' ]
     # liste_scores = ['Cadence 3', 'Cadence 4','Cadence 5']
@@ -1578,8 +1586,8 @@ if params.compare_scores:
     # Inertie_tot, Inertie_inter = Inerties(Points)
     descr_sorted, disp_sorted = MinimizeDispersion(Disp_by_descr, space)
     # inert_inter_sorted, inert_tot_sorted, descr_inert_sorted = MaximizeSeparation(Inertie_tot, Inertie_inter, space)
-    # spacePlot = ['concordance3', 'concordanceTot']
     spacePlot = ['harmonicChange', 'diffConcordance']
+    # spacePlot = ['crossConcordance', 'crossConcordanceTot']
     # spacePlot = descr_sorted[0:2]
 
     Clustered(Points, spacePlot, space)

@@ -3,10 +3,10 @@
 import numpy as np
 
 oneInstrument = False
-compare_instruments = False
-compare_scores = True
+compare_instruments = True
+compare_scores = False
 
-type_Temporal = 'static' #'static', 'differential'
+type_Temporal = 'differential' #'static', 'differential'
 type_Normalisation = 'by timbre' #'by curve', 'by timbre'
 visualize_time_grouping = True
 visualize_trajectories = True
