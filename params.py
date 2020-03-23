@@ -6,10 +6,10 @@ oneInstrument = False
 compare_instruments = True
 compare_scores = False
 
-type_Temporal = 'differential' #'static', 'differential'
+type_Temporal = 'static' #'static', 'differential'
 type_Normalisation = 'by timbre' #'by curve', 'by timbre'
 visualize_time_grouping = True
-visualize_trajectories = True
+visualize_trajectories = False
 
 correlation = False
 pca = False

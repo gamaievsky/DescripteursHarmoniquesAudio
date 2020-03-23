@@ -1336,10 +1336,15 @@ def MinimizeDispersion(Disp_by_descr, space):
 
 # Fonction qui trie les descripteurs en fonction du minimum de dispersion
 def MaximizeSeparation(Inertie_tot, Inertie_inter, space):
-    inert_inter_sorted = np.sort(Inertie_inter)
-    inert_tot_sorted = [Inertie_tot[i] for i in np.argsort(Inertie_inter)]
-    descr_inert_sorted = [space[i] for i in np.argsort(Inertie_inter)]
-    return inert_inter_sorted, inert_tot_sorted, descr_inert_sorted
+    d = len(space)
+    sep_matrix = np.zeros((d,d))
+    for i in range(1,d):
+        for j in range(i):
+            sep_matrix[i,j] = np.inner(Inertie_inter[[i,j]], Inertie_inter[[i,j]]) / np.inner(Inertie_tot[[i,j]], Inertie_tot[[i,j]])
+    ind = np.unravel_index(np.argmax(sep_matrix, axis=None), sep_matrix.shape)
+    return [space[ind[0]], space[ind[1]]]
+
+
 
 
 def Clustered(Points, spacePlot, space, type_Temporal = type_Temporal):
@@ -1548,11 +1553,13 @@ if params.compare_instruments:
     # liste_timbres = ['Flûte4', 'Flûte2', 'Octave2','Bourdon8', 'Cheminée8']#, 'Flûte4', 'Flûte2', 'Octave2']
     Points = Normalise(Points, liste_timbres, dic_timbres)
     Disp, Disp_by_descr,Disp_by_time = Dispersion(Points)
-    # Inertie_tot, Inertie_inter = Inerties(Points)
+    Inertie_tot, Inertie_inter = Inerties(Points)
     descr_sorted, disp_sorted = MinimizeDispersion(Disp_by_descr, space)
+    descrs_max_sep = MaximizeSeparation(Inertie_tot, Inertie_inter, space)
     # inert_inter_sorted, inert_tot_sorted, descr_inert_sorted = MaximizeSeparation(Inertie_tot, Inertie_inter, space)
-    spacePlot = ['harmonicChange', 'diffConcordance']
+    # spacePlot = ['crossConcordance', 'crossConcordanceTot']
     # spacePlot = descr_sorted[0:2]
+    spacePlot = descrs_max_sep
 
     Clustered(Points, spacePlot, space)
     Visualize(Points, spacePlot, space, liste_timbres, dic_timbres)#, liste_timbres_or_scores = ['Bourdon8', 'Cheminée8','Brd + Chm','Tutti'])
