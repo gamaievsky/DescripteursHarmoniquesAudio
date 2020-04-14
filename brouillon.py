@@ -1,6 +1,6 @@
-
 import numpy as np
+from numpy import linalg as LA
 
-print(320*1.05/100)
-
-# print(200*0.9825*7.5/100)
+norm_conc = True
+dic = {'conc':norm_conc}
+print(dic['conc'])
