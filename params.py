@@ -5,18 +5,20 @@ import numpy as np
 one_track = True
 Matrix = False
 test_stability = False
+compare_contexts = True
 compare_instruments = False
 compare_scores = False
 
-type_Temporal = 'differential' #'static', 'differential'
+type_Temporal = 'static' #'static', 'differential'
 type_Normalisation = 'by timbre' #'by curve', 'by timbre'
 visualize_time_grouping = True
-visualize_trajectories = False
+visualize_trajectories = True
 
 correlation = False
 pca = False
 
 # Distribution des pistes :
+dic_distribution = {'EssaiNuances' : 'record','EssaiNuances2' : 'themeAcc' , 'EssaiNuances4' : 'voix', 'EssaiUnisson' : 'voix', 'EssaiUnissonInterv' : 'voix', 'Schnittke_Cor_Lent' : 'themeAcc', 'Schnittke_Cor': 'themeAcc', 'Schnittke_Cor_T2': 'themeAcc', 'Schnittke_Implor': 'themeAcc', 'Beethoven': 'voix','EssaiNuancesIndiv':'voix'}
 distribution = 'voix' # 'voix', 'themeAcc', 'record'
 
 
@@ -37,10 +39,11 @@ spectral_reloc = True
 decompo_hpss = True
 margin = 3
 
-dic_duration = {'EssaiNuances' : 49.0,'EssaiNuances2' : 49.0 , 'EssaiNuances4' : 49.0, 'EssaiUnisson' : 26.0, 'EssaiUnissonInterv' : 20.0, 'Schnittke_Cor_Lent' : 368.0, 'Schnittke_Cor': 23.0, 'Schnittke_Implor': 48, 'Beethoven': 62}
-
+dic_duration = {'EssaiNuances' : 49.0,'EssaiNuances2' : 49.0 , 'EssaiNuances4' : 49.0, 'EssaiUnisson' : 26.0, 'EssaiUnissonInterv' : 20.0, 'Schnittke_Cor_Lent' : 368.0, 'Schnittke_Cor': 23.0, 'Schnittke_Cor_T2': 23.0, 'Schnittke_Implor': 48.0, 'Beethoven': 62.0,'EssaiNuancesIndiv':26.0}
+dic_noteMin = {'EssaiNuances' : 'D4','EssaiNuances2' : 'D4' , 'EssaiNuances4' : 'G3', 'EssaiUnisson' : 'D4', 'EssaiUnissonInterv' : 'A3', 'Schnittke_Cor_Lent' : 'A1', 'Schnittke_Cor': 'A1','Schnittke_Cor_T2': 'A1', 'Schnittke_Implor': 'A1', 'Beethoven': 'A1','EssaiNuancesIndiv':'A3'}
 #Matrice d'activation (quelles pistes sont à prendre en compte à quel moment ?)
-list_calcul_nombre_notes = ['EssaiUnisson', 'EssaiUnissonInterv']
+list_calcul_nombre_notes = ['EssaiUnisson', 'EssaiUnissonInterv','Schnittke_Cor','Schnittke_Cor_Lent','Schnittke_Cor_T2']
+list_3_voix = ['EssaiNuancesIndiv']
 seuil_activation = 0.01
 
 #NFFT = 2 ** 11 #(> 2**10) duration of analysis window in samples for feature extraction only.
@@ -98,28 +101,37 @@ norm_concTot = True # True : normalisation par la norme N, où N est le nombre d
 spectrRug_Simpl = False
 type_rug = 'produit' #'produit', 'minimum'
 norm_rug = True #True : normalisation par l'énergie si type_rug = 'produit', et la norme 1 sinon
-norm_crossConc = True  #False : chrom_crossConcordance porte déjà la normalisation de la concordance, True : norm par la concordance
-norm_crossConcTot = True #False : chrom_crossConcordance porte déjà la normalisation de la concordanceTot, True : norm par la concordanceTot
-type_harmChange = 'absolute' # 'absolute', 'relative'
-norm_harmChange = 'general' # 'None', 'frame_by_frame', 'general'
-norm_diffConc = 'None' # 'note_by_note', 'general', 'None'
+norm_crossConc = False  #False : chrom_crossConcordance porte déjà la normalisation de la concordance, True : norm par la concordance
+norm_crossConcTot = False #False : chrom_crossConcordance porte déjà la normalisation de la concordanceTot, True : norm par la concordanceTot
+theme_diffConc = True
+norm_diffConc = 'general' # 'note_by_note', 'general', 'None'
 norm_harmonicity = 2 # La puissance dans le calcul de l'harmonicité. 1 : amplitude, 2 : énergie
 
 memory_size = 1 # "full", int # entier n>=1, auquel cas la mémoire ne dure que n+1 accords
 memory_type = 'mean' #'max','mean'
 memory_decr_ponderation = 1
-norm_Novelty = True #True : normalisation par l'énergie
+norm_Novelty = 'frame_by_frame' # 'None', 'frame_by_frame', 'general'
 type_Novelty = 'dyn' #'dyn', 'stat'
+type_harmChange = 'absolute' # 'absolute', 'relative'
+norm_harmChange = 'frame_by_frame' # 'None', 'frame_by_frame', 'general'
 norm_rugCtx = True
-norm_diffConcCtx = 'general' #'general', 'None'
+theme_diffConcCtx = True
+norm_diffConcCtx = True # True : Normalisation par l'énergie des deux accords
+theme_diffRugCtx = True
+norm_diffRugCtx = True
 
 dic_test_norm = {'roughness': 1, 'roughnessSignal': 1, 'concordance' : 1, 'harmonicity' : 0}
-Norm = {'concordance':norm_conc, 'concordance3':norm_conc3, 'roughness':norm_rug, 'roughnessSignal':norm_rug, 'concordanceTot':norm_concTot, 'harmonicChange':norm_harmChange, 'diffConcordance':norm_diffConc, 'crossConcordance':norm_crossConc, 'crossConcordanceTot':norm_crossConcTot}
+Norm = {'concordance':norm_conc, 'concordance3':norm_conc3, 'roughness':norm_rug, 'roughnessSignal':norm_rug, 'concordanceTot':norm_concTot, 'harmonicChange':norm_harmChange, 'harmonicNovelty':norm_Novelty,'diffConcordance':norm_diffConc, 'diffConcordanceContext':norm_diffConcCtx,'crossConcordance':norm_crossConc, 'crossConcordanceTot':norm_crossConcTot, 'roughnessContext':norm_rugCtx, 'diffRoughnessContext':norm_diffRugCtx}
+Theme = {'diffConcordance':theme_diffConc, 'diffConcordanceContext':theme_diffConcCtx, 'diffRoughnessContext':theme_diffRugCtx}
 dic_norm = {}
-for descr in ['concordance', 'concordance3', 'concordanceTot', 'roughness', 'roughnessSignal','crossConcordance','crossConcordanceTot']:
-    if Norm[descr]: dic_norm[descr] = 'Normalised'
-    else: dic_norm[descr] = 'Not normalised'
-for descr in ['harmonicChange', 'diffConcordance']:
+for descr in ['concordance', 'concordance3', 'concordanceTot', 'roughness', 'roughnessSignal','roughnessContext','crossConcordance','crossConcordanceTot','diffConcordance','diffConcordanceContext', 'diffRoughnessContext']:
+    type = ''
+    if (descr in Theme) and Theme[descr]:
+        type = ', Theme'
+    if Norm[descr]: dic_norm[descr] = 'Normalised' + type
+    else: dic_norm[descr] = 'Not normalised' + type
+
+for descr in ['harmonicChange', 'harmonicNovelty']:
     if Norm[descr] == 'None': dic_norm[descr] = 'Not normalised'
     else : dic_norm[descr]='Normalisation : {}'.format(Norm[descr])
 

@@ -317,6 +317,10 @@ class SignalSepare:
                             self.chromPistesSync[k][:,t] = 0
                 self.activation[:,0] = 0
                 self.activation[:,self.n_frames-1] = 0
+            elif title in params.list_3_voix:
+                'il y a 3 voix'
+                self.activation[-1] = np.zeros(self.n_frames)
+
 
             # Calcul du nombre de notes
             self.n_notes = np.sum(self.activation, axis=0)
@@ -324,45 +328,43 @@ class SignalSepare:
             self.n_notes[-1] = 0
 
 
-    def Context(self):
-        mem = params.memory_size
+    def Context(self, type = params.memory_type, size = params.memory_size, decr = params.memory_decr_ponderation):
 
         #Construction du context harmonique
         self.context = np.zeros((self.n_bins,self.n_frames))
         self.context[:,0] = self.chromSync[:,0]
 
         # Memory = "full"
-        if isinstance(mem,str):
-            if params.memory_type == 'max':
+        if isinstance(size,str):
+            if type == 'max':
                 for t in range(1,self.n_frames):
                     self.context[:,t] = np.fmax(self.context[:,t-1],self.chromSync[:,t])
-            elif params.memory_type == 'mean':
+            elif type == 'mean':
                 #Construction du vecteur de pondération
-                weights = [(1/i**params.memory_decr_ponderation) for i in range(1,self.n_frames+2)]
+                weights = [(1/i**decr) for i in range(1,self.n_frames+2)]
                 #Moyennage
                 for t in range(1,self.n_frames):
                     self.context[:,t] = np.average(self.chromSync[:,:(t+1)], axis=1, weights=[weights[t-i] for i in range(t+1)])
 
         # Memory = int
-        elif isinstance(mem,int):
-            if params.memory_type == 'max':
-                for t in range(1,mem+1):
+        elif isinstance(size,int):
+            if type == 'max':
+                for t in range(1,+1):
                     self.context[:,t] = np.fmax(self.chromSync[:,t], self.context[:,t-1])
-                for t in range(mem+1,self.n_frames):
-                    self.context[:,t] = np.amax(self.chromSync[:,(t-mem):(t+1)], axis = 1)
-            elif params.memory_type == 'mean':
+                for t in range(size+1,self.n_frames):
+                    self.context[:,t] = np.amax(self.chromSync[:,(t-size):(t+1)], axis = 1)
+            elif type == 'mean':
                 #Construction du vecteur de pondération
-                weights = [(1/i**params.memory_decr_ponderation) for i in range(1,mem+2)]
+                weights = [(1/i**decr) for i in range(1,size+2)]
                 #Moyennage
-                for t in range(1,mem+1):
-                    self.context[:,t] = np.average(self.chromSync[:,:(t+1)], axis=1, weights=[weights[t-i] for i in range(t+1)])
-                for t in range(mem+1,self.n_frames):
-                    self.context[:,t] = np.average(self.chromSync[:,(t-mem):(t+1)], axis=1, weights=[weights[mem-i] for i in range(mem+1)])
-
+                for t in range(1,size+1):
+                    self.context[:,t] = np.average(self.chromSync[:,1:(t+1)], axis=1, weights=[weights[t-i] for i in range(1,t+1)])
+                for t in range(size+1,self.n_frames):
+                    self.context[:,t] = np.average(self.chromSync[:,(t-size):(t+1)], axis=1, weights=[weights[size-i] for i in range(size+1)])
         #Calcul de l'énergie du contexte
+        self.energyContext = []
         for t in range(self.n_frames):
-            self.energyContext.append(np.sum(np.multiply(self.context[:,t], self.context[:,t])))
-
+            self.energyContext.append(LA.norm(self.context[:,t])**2)
 
     def SimplifySpectrum(self):
         self.chromSyncSimpl = np.copy(self.chromSync)
@@ -612,19 +614,19 @@ class SignalSepare:
 
 
             if params.norm_harmChange == 'None':
-                self.chrom_harmonicChange[:,t] = self.chromSync[:,t+1] - self.chromSync[:,t]
+                self.chrom_harmonicChange[:,t] = self.chromSync[:,t+1] - self.context[:,t]
 
             elif params.norm_harmChange == 'frame_by_frame':
-                self.chrom_harmonicChange[:,t] = np.subtract([x/np.sqrt(self.energy[t+1]) for x in self.chromSync[:,t+1]], [y/np.sqrt(self.energy[t]) for y in self.chromSync[:,t]])
+                self.chrom_harmonicChange[:,t] = self.chromSync[:,t+1]/np.sqrt(self.energy[t+1]) - self.context[:,t]/np.sqrt(self.energyContext[t])
 
             elif params.norm_harmChange == 'general':
-                self.chrom_harmonicChange[:,t] = np.divide(self.chromSync[:,t+1] - self.chromSync[:,t], (self.energy[t+1]*self.energy[t])**(1/4))
+                self.chrom_harmonicChange[:,t] = np.divide(self.chromSync[:,t+1] - self.context[:,t], (self.energy[t+1]*self.energyContext[t])**(1/4))
 
             if params.type_harmChange == 'absolute': self.chrom_harmonicChange[:,t] = np.abs(self.chrom_harmonicChange[:,t])
 
         self.harmonicChange = self.chrom_harmonicChange.sum(axis=0)
         self.harmonicChange[0]=0
-        self.harmonicChange[self.n_frames-2]=0
+        self.harmonicChange[-1]=0
 
 
     def HarmonicNovelty(self):
@@ -634,20 +636,23 @@ class SignalSepare:
         self.chrom_harmonicNovelty = np.zeros((self.n_bins,self.n_frames))
         self.chrom_harmonicNovelty[:,1] = self.chromSync[:,1]
         for t in range(2,self.n_frames):
-            self.chrom_harmonicNovelty[:,t] = self.chromSync[:,t] - self.context[:,t-1]
+            if params.norm_Novelty == 'frame_by_frame':
+                self.chrom_harmonicNovelty[:,t] = self.chromSync[:,t]/np.sqrt(self.energy[t]) - self.context[:,t-1]/np.sqrt(self.energyContext[t-1])
+            elif params.norm_Novelty == 'general':
+                self.chrom_harmonicNovelty[:,t] = np.divide(self.chromSync[:,t] - self.context[:,t-1], (self.energy[t]*self.energyContext[t-1])**(1/4))
+            elif params.norm_Novelty == 'None':
+                self.chrom_harmonicNovelty[:,t] = self.chromSync[:,t] - self.context[:,t-1]
             for i in range(self.n_bins):
                 if self.chrom_harmonicNovelty[:,t][i]<0: self.chrom_harmonicNovelty[:,t][i] = 0
 
         # Construction des Nouveautés harmoniques
-        for t in range(self.n_frames):
-            self.harmonicNovelty.append(np.sum(np.multiply(self.chrom_harmonicNovelty[:,t], self.chrom_harmonicNovelty[:,t])))
-        if params.norm_Novelty:
-            self.harmonicNovelty[1:(self.n_frames-1)] = np.divide(self.harmonicNovelty[1:(self.n_frames-1)], np.sqrt(self.energy[1:(self.n_frames-1)]))
-        self.harmonicNovelty[0]=0
-        self.harmonicNovelty[self.n_frames-1]=0
-
+        self.harmonicNovelty = self.chrom_harmonicNovelty.sum(axis=0)
         if params.type_Novelty == 'dyn':
-            self.harmonicNovelty.pop(0)
+            self.harmonicNovelty = self.harmonicNovelty[1:]
+        self.harmonicNovelty[0]=0
+        self.harmonicNovelty[-1]=0
+
+
 
 
 
@@ -655,13 +660,23 @@ class SignalSepare:
         self.chrom_diffConcordance = np.zeros((self.n_bins,self.n_frames-1))
 
         if params.norm_diffConc == 'None':
-            for t in range(self.n_frames-1):
-                self.chrom_diffConcordance[:,t] = np.multiply(self.chromSync[:,t], self.chromSync[:,t+1]) / (self.n_notes[t]*self.n_notes[t+1])
+            if not params.theme_diffConc:
+                for t in range(self.n_frames-1):
+                    self.chrom_diffConcordance[:,t] = np.multiply(self.chromSync[:,t], self.chromSync[:,t+1])
+            else :
+                for t in range(self.n_frames-1):
+                    if self.activation[0,t+1]:
+                        self.chrom_diffConcordance[:,t] = np.multiply(self.chromSync[:,t], self.chromPistesSync[0][:,t+1])
 
         elif params.norm_diffConc == 'general':
-            for t in range(self.n_frames-1):
-                self.chrom_diffConcordance[:,t] = np.multiply(self.chromSync[:,t], self.chromSync[:,t+1])
-                self.chrom_diffConcordance[:,t] = np.divide(self.chrom_diffConcordance[:,t], np.sqrt(self.energy[t] * self.energy[t+1]))
+            if not params.theme_diffConc:
+                for t in range(self.n_frames-1):
+                    self.chrom_diffConcordance[:,t] = np.multiply(self.chromSync[:,t], self.chromSync[:,t+1])
+                    self.chrom_diffConcordance[:,t] /= np.sqrt(self.energy[t] * self.energy[t+1])
+            else :
+                for t in range(self.n_frames-1):
+                    if self.activation[0,t+1]:
+                        self.chrom_diffConcordance[:,t] = np.multiply(self.chromSync[:,t], self.chromPistesSync[0][:,t+1]) / np.sqrt(self.energy[t] * self.energyPistes[0][t+1])
 
         elif params.norm_diffConc == 'note_by_note':
             for t in range(self.n_frames-1):
@@ -670,6 +685,8 @@ class SignalSepare:
                         if self.activation[k,t] and self.activation[l,t+1]:
                             self.chrom_diffConcordance[:,t] += np.divide(np.multiply(self.chromPistesSync[k][:,t], self.chromPistesSync[l][:,t+1]), np.sqrt(self.energyPistes[k][t] * self.energyPistes[l][t+1]))
                 self.chrom_diffConcordance[:,t] /= self.n_notes[t]*self.n_notes[t+1]
+
+
 
 
         self.diffConcordance = self.chrom_diffConcordance.sum(axis=0)
@@ -688,6 +705,7 @@ class SignalSepare:
                 SpecHarm[pic + i] = 1/(k+1)**params.decr
 
         # Correlation avec le spectre réel
+        self.harmonicity = []
         for t in range(self.n_frames):
             self.harmonicity.append(max(np.correlate(np.power(self.chromSync[:,t],params.norm_harmonicity), SpecHarm,"full")) / self.energy[t]**(params.norm_harmonicity/2))
 
@@ -711,6 +729,7 @@ class SignalSepare:
                 SpecHarm[pic + i] = 1/(k+1)**params.decr
 
         # Correlation avec le spectre réel
+        self.harmonicityContext = []
         for t in range(self.n_frames):
             self.harmonicityContext.append(max(np.correlate(np.power(self.context[:,t],params.norm_harmonicity), SpecHarm,"full")) / LA.norm(self.context[:,t], ord = params.norm_harmonicity)**(params.norm_harmonicity))
 
@@ -744,11 +763,17 @@ class SignalSepare:
 
     def DiffConcordanceContext(self):
         self.chrom_diffConcordanceContext = np.zeros((self.n_bins,self.n_frames-1))
-        for t in range(self.n_frames-1):
-            self.chrom_diffConcordanceContext[:,t] = np.multiply(self.context[:,t], self.chromSync[:,t+1])
-            if params.norm_diffConcCtx == 'None': pass
-            elif params.norm_diffConcCtx == 'general':
-                self.chrom_diffConcordanceContext[:,t] = np.divide(self.chrom_diffConcordanceContext[:,t], np.sqrt(self.energyContext[t] * self.energy[t+1]))
+        if not params.theme_diffConcCtx:
+            for t in range(self.n_frames-1):
+                self.chrom_diffConcordanceContext[:,t] = np.multiply(self.context[:,t], self.chromSync[:,t+1])
+                if params.norm_diffConcCtx:
+                    self.chrom_diffConcordanceContext[:,t] /= np.sqrt(self.energyContext[t] * self.energy[t+1])
+        else:
+            for t in range(self.n_frames-1):
+                self.chrom_diffConcordanceContext[:,t] = np.multiply(self.context[:,t], self.chromPistesSync[0][:,t+1])
+                if params.norm_diffConcCtx:
+                    self.chrom_diffConcordanceContext[:,t] /= np.sqrt(self.energyContext[t] * self.energyPistes[0][t+1])
+
 
         self.diffConcordanceContext = self.chrom_diffConcordanceContext.sum(axis=0)
         self.diffConcordanceContext[0]=0
@@ -757,22 +782,44 @@ class SignalSepare:
 
     def DiffRoughnessContext(self):
         self.chrom_diffRoughnessContext = np.zeros((self.n_bins,self.n_frames-1))
-        for b1 in range(self.n_bins):
-            for b2 in range(self.n_bins):
-                f1 = self.fmin*2**(b1/BINS_PER_OCTAVE)
-                f2 = self.fmin*2**(b2/BINS_PER_OCTAVE)
-                freq = [f1, f2]
-                freq.sort()
-                s = 0.44*(np.log(params.β2/params.β1)/(params.β2-params.β1))*(freq[1]-freq[0])/(freq[0]**(0.477))
-                rug = np.exp(-params.β1*s)-np.exp(-params.β2*s)
+        if params.theme_diffRugCtx:
+            for b1 in range(self.n_bins):
+                for b2 in range(self.n_bins):
+                    f1 = self.fmin*2**(b1/BINS_PER_OCTAVE)
+                    f2 = self.fmin*2**(b2/BINS_PER_OCTAVE)
+                    freq = [f1, f2]
+                    freq.sort()
+                    s = 0.44*(np.log(params.β2/params.β1)/(params.β2-params.β1))*(freq[1]-freq[0])/(freq[0]**(0.477))
+                    rug = np.exp(-params.β1*s)-np.exp(-params.β2*s)
 
-                for t in range(self.n_frames-1):
-                    self.chrom_diffRoughnessContext[b1,t] += (self.context[b1,t] * self.chromSync[b2,t+1]) * rug / 2
-                    self.chrom_diffRoughnessContext[b2,t] += (self.context[b1,t] * self.chromSync[b2,t+1]) * rug / 2
+                    for t in range(self.n_frames-1):
+                        self.chrom_diffRoughnessContext[b1,t] += (self.context[b1,t] * self.chromPistesSync[0][b2,t+1]) * rug / 2
+                        self.chrom_diffRoughnessContext[b2,t] += (self.context[b1,t] * self.chromPistesSync[0][b2,t+1]) * rug / 2
+
+        else:
+            for b1 in range(self.n_bins):
+                for b2 in range(self.n_bins):
+                    f1 = self.fmin*2**(b1/BINS_PER_OCTAVE)
+                    f2 = self.fmin*2**(b2/BINS_PER_OCTAVE)
+                    freq = [f1, f2]
+                    freq.sort()
+                    s = 0.44*(np.log(params.β2/params.β1)/(params.β2-params.β1))*(freq[1]-freq[0])/(freq[0]**(0.477))
+                    rug = np.exp(-params.β1*s)-np.exp(-params.β2*s)
+
+                    for t in range(self.n_frames-1):
+                        self.chrom_diffRoughnessContext[b1,t] += (self.context[b1,t] * self.chromSync[b2,t+1]) * rug / 2
+                        self.chrom_diffRoughnessContext[b2,t] += (self.context[b1,t] * self.chromSync[b2,t+1]) * rug / 2
+
+
 
         if params.norm_diffRugCtx:
-            for t in range(self.n_frames-1):
-                self.chrom_diffRoughnessContext[:,t] = np.divide(self.chrom_diffRoughnessContext[:,t], np.sqrt(self.energyContext[t]*self.energy[t+1]))
+            if params.theme_diffRugCtx:
+                for t in range(self.n_frames-1):
+                    self.chrom_diffRoughnessContext[:,t] = np.divide(self.chrom_diffRoughnessContext[:,t], np.sqrt(self.energyContext[t]*self.energyPistes[0][t+1]))
+            else:
+                for t in range(self.n_frames-1):
+                    self.chrom_diffRoughnessContext[:,t] = np.divide(self.chrom_diffRoughnessContext[:,t], np.sqrt(self.energyContext[t]*self.energy[t+1]))
+
         self.diffRoughnessContext = self.chrom_diffRoughnessContext.sum(axis=0)
 
 
@@ -1015,26 +1062,25 @@ class SignalSepare:
                 # Je remplace les valeurs nan par 0
                 for i,val in enumerate(getattr(self,descr)):
                     if np.isnan(val): getattr(self,descr)[i] = 0
+
                 plt.vlines(self.onset_times[1:self.n_frames], min(getattr(self, descr)), max(getattr(self, descr)[1:(self.n_frames-1)]), color='k', alpha=0.9, linestyle='--')
                 if not all(x>=0 for x in getattr(self, descr)[1:(self.n_frames-1)]):
                     plt.hlines(0,self.onset_times[0], self.onset_times[self.n_frames], alpha=0.5, linestyle = ':')
 
                 # Legend
-                type = ''
+                context = ''
                 norm = ''
                 if params.plot_norm and (descr in params.dic_norm ): norm = '\n' + params.dic_norm[descr]
                 if descr in ['harmonicNovelty', 'harmonicityContext','roughnessContext','diffConcordanceContext','diffRoughnessContext'] :
-                    decrem = ''
-                    if params.memory_type == 'mean': decrem = 'Decr {}'.format(params.memory_decr_ponderation)
-                    if isinstance(params.memory_size, str): type = '\nType : ' + params.memory_type + ', full' + decrem
-                    else: type ='\nType : ' + params.memory_type + ', {} chords'.format(int(params.memory_size)) + decrem
+                    if params.memory_size>=2: context = '\n' + 'Memory: {} chords, decr = {}'.format(params.memory_size, params.memory_decr_ponderation)
+                    else: context = '\n' + 'Memory: {} chord, decr = {}'.format(params.memory_size, params.memory_decr_ponderation)
 
                 # Descripteurs statiques
                 if len(getattr(self, descr)) == self.n_frames:
-                    plt.hlines(getattr(self, descr)[1:(self.n_frames-1)], self.onset_times[1:(self.n_frames-1)], self.onset_times[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][k], label=descr[0].upper() + descr[1:] + norm + type)
+                    plt.hlines(getattr(self, descr)[1:(self.n_frames-1)], self.onset_times[1:(self.n_frames-1)], self.onset_times[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][k], label=descr[0].upper() + descr[1:] + norm + context)
                 # Descripteurs dynamiques
                 elif len(getattr(self, descr)) == (self.n_frames-1):
-                    plt.plot(self.onset_times[2:(self.n_frames-1)], getattr(self, descr)[1:(self.n_frames-2)],['b','r','g','c','m','y','b','r','g'][k]+'o', label=(descr[0].upper() + descr[1:]) + norm + type)
+                    plt.plot(self.onset_times[2:(self.n_frames-1)], getattr(self, descr)[1:(self.n_frames-2)],['b','r','g','c','m','y','b','r','g'][k]+'o', label=(descr[0].upper() + descr[1:]) + norm + context)
                     plt.hlines(getattr(self, descr)[1:(self.n_frames-2)], [t-0.25 for t in self.onset_times[2:(self.n_frames-1)]], [t+0.25 for t in self.onset_times[2:(self.n_frames-1)]], color=['b','r','g','c','m','y','b','r','g'][k], alpha=0.9, linestyle=':'  )
                 plt.legend(frameon=True, framealpha=0.75)
 
@@ -1237,6 +1283,7 @@ type_Normalisation = params.type_Normalisation
 
 
 
+
 def Construction_Points(liste_timbres_or_scores, title, space, Notemin, Notemax, dic, filename = 'Points.npy', score = [], instrument = 'Organ', name_OpenFrames = '', duration = None, sr = 22050):
     # Chargement de onset_frames
     def OpenFrames(title):
@@ -1267,28 +1314,29 @@ def Construction_Points(liste_timbres_or_scores, title, space, Notemin, Notemax,
         # for i,time in enumerate(onset_frames)
         return onset_frames
     onset_frames = OpenFrames(name_OpenFrames)
-
+    if title in params.dic_distribution: distribution = params.dic_distribution[title]
+    else :distribution = params.distribution
     Points = []
 
     if params.one_track:
         for instrument in liste_timbres_or_scores:
             # CHARGEMENT DES SONS ET DE LA PARTITION
             y, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'.wav', duration = duration)
-            if params.distribution == 'voix':
+            if distribution == 'voix':
                 y1, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Basse.wav', duration = duration)
                 y2, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Alto.wav', duration = duration)
                 y3, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Soprano.wav', duration = duration)
                 y4, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Tenor.wav', duration = duration)
-            elif params.distribution == 'themeAcc':
+            elif distribution == 'themeAcc':
                 y1, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-theme.wav', duration = duration)
                 y2, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-acc.wav', duration = duration)
 
             # CRÉATION DE L'INSTANCE DE CLASSE
-            if params.distribution == 'record':
+            if distribution == 'record':
                 S = SignalSepare(y, sr, [], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score = score,instrument = instrument)
-            elif params.distribution == 'voix':
+            elif distribution == 'voix':
                 S = SignalSepare(y, sr, [y1,y2,y3,y4], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score = score,instrument = instrument)
-            elif params.distribution == 'themeAcc':
+            elif distribution == 'themeAcc':
                 S = SignalSepare(y, sr, [y1,y2], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score = score,instrument = instrument)
 
             S.DetectionOnsets()
@@ -1311,11 +1359,11 @@ def Construction_Points(liste_timbres_or_scores, title, space, Notemin, Notemax,
             y4, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'_T{}'.format(dic[instrument])+'-Tenor.wav', duration = duration)
 
             # CRÉATION DE L'INSTANCE DE CLASSE
-            if params.distribution == 'record':
+            if distribution == 'record':
                 S = SignalSepare(y, sr, [], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score = score,instrument = instrument)
-            elif params.distribution == 'voix':
+            elif distribution == 'voix':
                 S = SignalSepare(y, sr, [y1,y2,y3,y4], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score = score,instrument = instrument)
-            elif params.distribution == 'themeAcc':
+            elif distribution == 'themeAcc':
                 S = SignalSepare(y, sr, [y1,y2], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score = score,instrument = instrument)
             S.DetectionOnsets()
             S.Clustering()
@@ -1337,11 +1385,11 @@ def Construction_Points(liste_timbres_or_scores, title, space, Notemin, Notemax,
             y4, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'{}-Tenor.wav'.format(dic[score]), duration = duration)
 
             # CRÉATION DE L'INSTANCE DE CLASSE
-            if params.distribution == 'record':
+            if distribution == 'record':
                 S = SignalSepare(y, sr, [], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score = score,instrument = instrument)
-            elif params.distribution == 'voix':
+            elif distribution == 'voix':
                 S = SignalSepare(y, sr, [y1,y2,y3,y4], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score = score,instrument = instrument)
-            elif params.distribution == 'themeAcc':
+            elif distribution == 'themeAcc':
                 S = SignalSepare(y, sr, [y1,y2], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score = score,instrument = instrument)
             S.DetectionOnsets()
             S.Clustering()
@@ -1352,7 +1400,6 @@ def Construction_Points(liste_timbres_or_scores, title, space, Notemin, Notemax,
             # CRÉATION DE POINTS
             Points.append(S.Points(space))
             print(score + ': OK')
-
 
 
     Points = np.asarray(Points)
@@ -1418,8 +1465,6 @@ def MaximizeSeparation(Inertie_tot, Inertie_inter, space):
     return [space[ind[0]], space[ind[1]]]
 
 
-
-
 def Clustered(Points, spacePlot, space, type_Temporal = type_Temporal):
     ind_descr = [space.index(descr) for descr in spacePlot]
     if type_Temporal == 'static':
@@ -1437,94 +1482,246 @@ def Clustered(Points, spacePlot, space, type_Temporal = type_Temporal):
 
 
 # Visualisation
-def Visualize(Points, descr, space, liste_timbres_or_scores, dic, type_Temporal = type_Temporal):
-    dim1 = space.index(descr[0])
-    dim2 = space.index(descr[1])
-
-    # Fonction qui renvoie True si deux listes ont une intersection commune
-    def intersect(lst1, lst2):
-        inter = False
-        i = 0
-        while (not inter) & (i<len(lst1)):
-            if (lst1[i] in lst2): inter = True
-            i += 1
-        return inter
-
-    # Détermination de la présence simultanée de descripteurs statiques et dynamiques dans space, et le cas échéant attribution du suffixe 'evolution' aux descr stat
-    suff0, suff1 = '',''
-    if intersect(space,spaceStat) & intersect(space,spaceDyn):
-        if descr[0] in spaceStat: suff0 = ' evolution'
-        if descr[1] in spaceStat: suff1 = ' evolution'
-
-    plt.figure(figsize=(8, 7))
-    ax = plt.subplot()
+def Visualize(Points, descr, space, liste_timbres_or_scores, dic, type_Temporal = type_Temporal, type = 'abstract', simultaneity = False, score = None, onset_times = None):
+    # Liste des descripteurs de context
+    liste_descrContext = ['energyContext','harmonicChange','harmonicNovelty', 'harmonicityContext','roughnessContext','diffConcordanceContext','diffRoughnessContext']
 
 
-    if type_Temporal =='static':
-        for timbre, instrument in enumerate(liste_timbres_or_scores):
-            if dic[instrument] <= 10: ls = '--'
-            else: ls = ':'
-            if params.visualize_trajectories:
-                plt.plot(Points[timbre,dim1,:].tolist(), Points[timbre,dim2,:].tolist(), color ='C{}'.format(dic[instrument]-1),ls = ls, marker = 'o', label = instrument)
-            if params.visualize_time_grouping:
-                for t in range(len(Points[timbre,dim1,:])):
-                    plt.plot(Points[timbre,dim1,:].tolist()[t], Points[timbre,dim2,:].tolist()[t], color ='C{}'.format(t),ls = ls, marker = 'o')
-            for t in range(len(Points[timbre,dim1,:].tolist())):
-                ax.annotate(' {}'.format(t+1), (Points[timbre,dim1,:][t], Points[timbre,dim2,:][t]), color='black')
-        if not all(x>=0 for x in Points[:,dim1,:].flatten()):
-            plt.vlines(0,np.amin(Points[:,dim2,:]), np.amax(Points[:,dim2,:]), alpha=0.5, linestyle = ':')
-        if not all(x>=0 for x in Points[:,dim2,:].flatten()):
-            plt.hlines(0,np.amin(Points[:,dim1,:]), np.amax(Points[:,dim1,:]), alpha=0.5, linestyle = ':')
-        plt.xlabel(descr[0][0].upper() + descr[0][1:] + suff0)
-        plt.ylabel(descr[1][0].upper() + descr[1][1:] + suff1)
-        if params.one_track:
-            plt.title(title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ')\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
-        else:
-            if params.compare_instruments: goal = 'Timbre comparaison'
-            elif params.compare_scores: goal = 'Score comparaison'
-            if type_Normalisation == 'by curve':
-                plt.title(goal + '\n' + title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ')\n' + 'Normalisation curve by curve' + '\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
+    if type == 'abstract':
+        dim1 = space.index(descr[0])
+        dim2 = space.index(descr[1])
+
+        # Fonction qui renvoie True si deux listes ont une intersection commune
+        def intersect(lst1, lst2):
+            inter = False
+            i = 0
+            while (not inter) & (i<len(lst1)):
+                if (lst1[i] in lst2): inter = True
+                i += 1
+            return inter
+
+        # Détermination de la présence simultanée de descripteurs statiques et dynamiques dans space, et le cas échéant attribution du suffixe 'evolution' aux descr stat
+        suff0, suff1 = '',''
+        if intersect(space,spaceStat) & intersect(space,spaceDyn):
+            if descr[0] in spaceStat: suff0 = ' evolution'
+            if descr[1] in spaceStat: suff1 = ' evolution'
+
+        plt.figure(figsize=(8, 7))
+        ax = plt.subplot()
+
+
+        if type_Temporal =='static':
+            for timbre, instrument in enumerate(liste_timbres_or_scores):
+                if dic[instrument] <= 10: ls = '--'
+                else: ls = ':'
+                if params.visualize_trajectories:
+                    if params.one_track and params.compare_contexts:
+                        if instrument[1]>=2: label = '\n' + 'Memory: {} chords, decr = {}'.format(instrument[1], instrument[2])
+                        else: label = '\n' + 'Memory: {} chord, decr = {}'.format(instrument[1], instrument[2])
+                    else: label = instrument
+                    plt.plot(Points[timbre,dim1,:].tolist(), Points[timbre,dim2,:].tolist(), color ='C{}'.format(dic[instrument]-1),ls = ls, marker = 'o', label = instrument)
+                if params.visualize_time_grouping:
+                    for t in range(len(Points[timbre,dim1,:])):
+                        plt.plot(Points[timbre,dim1,:].tolist()[t], Points[timbre,dim2,:].tolist()[t], color ='C{}'.format(t),ls = ls, marker = 'o')
+                for t in range(len(Points[timbre,dim1,:].tolist())):
+                    ax.annotate(' {}'.format(t+1), (Points[timbre,dim1,:][t], Points[timbre,dim2,:][t]), color='black')
+            if not all(x>=0 for x in Points[:,dim1,:].flatten()):
+                plt.vlines(0,np.amin(Points[:,dim2,:]), np.amax(Points[:,dim2,:]), alpha=0.5, linestyle = ':')
+            if not all(x>=0 for x in Points[:,dim2,:].flatten()):
+                plt.hlines(0,np.amin(Points[:,dim1,:]), np.amax(Points[:,dim1,:]), alpha=0.5, linestyle = ':')
+
+            context0, context1 = '',''
+            norm0, norm1 = '',''
+            if params.plot_norm and (descr[0] in params.dic_norm ): norm0 = ', ' + params.dic_norm[descr[0]]
+            if params.plot_norm and (descr[1] in params.dic_norm ): norm1 = ', ' + params.dic_norm[descr[1]]
+            if not params.compare_contexts:
+                if descr[0] in liste_descrContext:
+                    if params.memory_size>=2: context0 = ', '+'Memory: {} chords, decr = {}'.format(params.memory_size, params.memory_decr_ponderation)
+                    else: context0 = ', '+'Memory: {} chord, decr = {}'.format(params.memory_size, params.memory_decr_ponderation)
+                if descr[1] in liste_descrContext:
+                    if params.memory_size>=2: context1 = ', '+'Memory: {} chords, decr = {}'.format(params.memory_size, params.memory_decr_ponderation)
+                    else: context1 = ', '+'Memory: {} chord, decr = {}'.format(params.memory_size, params.memory_decr_ponderation)
+            plt.xlabel(descr[0][0].upper() + descr[0][1:] + suff0 + norm0 + context0)
+            plt.ylabel(descr[1][0].upper() + descr[1][1:] + suff1 + norm1 + context1)
+            if params.one_track and not params.compare_contexts:
+                plt.title(title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ')\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
             else:
-                plt.title(goal + '\n' + title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ')\n' + 'Normalisation on all the curves ' + '\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
+                if params.compare_instruments: goal = 'Timbre comparaison'
+                elif params.compare_scores: goal = 'Score comparaison'
+                elif params.one_track and params.compare_contexts: goal = 'Context comparaison'
+                if type_Normalisation == 'by curve':
+                    plt.title(goal + '\n' + title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ')\n' + 'Normalisation curve by curve' + '\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
+                else:
+                    plt.title(goal + '\n' + title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ')\n' + 'Normalisation on all the curves ' + '\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
 
 
 
 
 
-    elif type_Temporal =='differential':
-        # Construction de la matrice Points_diff
-        Points_diff = np.zeros((Points.shape[0],Points.shape[1],Points.shape[2]-1))
-        for i in range(Points.shape[2]-1):
-            Points_diff[:,:,i] = Points[:,:,i+1]-Points[:,:,i]
-        for timbre, instrument in enumerate(liste_timbres_or_scores):
-            if dic[instrument] <= 10: ls = '--'
-            else: ls = ':'
-            if params.visualize_trajectories:
-                plt.plot(Points_diff[timbre,dim1,:].tolist(), Points_diff[timbre,dim2,:].tolist(), color ='C{}'.format(dic[instrument]-1),ls = ls,marker = 'o', label = instrument)
-            if params.visualize_time_grouping:
-                for t in range(len(Points_diff[timbre,dim1,:])):
-                    plt.plot(Points_diff[timbre,dim1,:].tolist()[t], Points_diff[timbre,dim2,:].tolist()[t], color ='C{}'.format(t),ls = ls,marker = 'o')
-            for t in range(len(Points_diff[timbre,dim1,:].tolist())):
-                ax.annotate(' {}'.format(t+1), (Points_diff[timbre,dim1,:][t], Points_diff[timbre,dim2,:][t]), color='black')
+        elif type_Temporal =='differential':
+            # Construction de la matrice Points_diff
+            Points_diff = np.zeros((Points.shape[0],Points.shape[1],Points.shape[2]-1))
+            for i in range(Points.shape[2]-1):
+                Points_diff[:,:,i] = Points[:,:,i+1]-Points[:,:,i]
+            for timbre, instrument in enumerate(liste_timbres_or_scores):
+                if dic[instrument] <= 10: ls = '--'
+                else: ls = ':'
+                if params.visualize_trajectories:
+                    if params.one_track and params.compare_contexts:
+                        if instrument[1]>=2: label = '\n' + 'Memory: {} chords, decr = {}'.format(instrument[1], instrument[2])
+                        else: label = '\n' + 'Memory: {} chord, decr = {}'.format(instrument[1], instrument[2])
+                    else: label = instrument
+                    plt.plot(Points_diff[timbre,dim1,:].tolist(), Points_diff[timbre,dim2,:].tolist(), color ='C{}'.format(dic[instrument]-1),ls = ls, marker = 'o', label = instrument)
+                if params.visualize_time_grouping:
+                    for t in range(len(Points_diff[timbre,dim1,:])):
+                        plt.plot(Points_diff[timbre,dim1,:].tolist()[t], Points_diff[timbre,dim2,:].tolist()[t], color ='C{}'.format(t),ls = ls, marker = 'o')
+                for t in range(len(Points_diff[timbre,dim1,:].tolist())):
+                    ax.annotate(' {}'.format(t+1), (Points_diff[timbre,dim1,:][t], Points_diff[timbre,dim2,:][t]), color='black')
+            if not all(x>=0 for x in Points_diff[:,dim1,:].flatten()):
+                plt.vlines(0,np.amin(Points_diff[:,dim2,:]), np.amax(Points_diff[:,dim2,:]), alpha=0.5, linestyle = ':')
+            if not all(x>=0 for x in Points_diff[:,dim2,:].flatten()):
+                plt.hlines(0,np.amin(Points_diff[:,dim1,:]), np.amax(Points_diff[:,dim1,:]), alpha=0.5, linestyle = ':')
 
-        if not all(x>=0 for x in Points_diff[:,dim1,:].flatten()):
-            plt.vlines(0,np.amin(Points_diff[:,dim2,:]), np.amax(Points_diff[:,dim2,:]), alpha=0.5, linestyle = ':')
-        if not all(x>=0 for x in Points_diff[:,dim2,:].flatten()):
-            plt.hlines(0,np.amin(Points_diff[:,dim1,:]), np.amax(Points_diff[:,dim1,:]), alpha=0.5, linestyle = ':')
-        plt.xlabel(descr[0][0].upper() + descr[0][1:] + suff0 + ' evolution')
-        plt.ylabel(descr[1][0].upper() + descr[1][1:] + suff1 + ' evolution')
-        if params.one_track:
-            plt.title(title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ')\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
-        else:
-            if params.compare_instruments: goal = 'Timbre comparaison'
-            elif params.compare_scores: goal = 'Score comparaison'
-            if type_Normalisation == 'by curve':
-                plt.title(goal + '\n' + title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ')\n' + 'Normalisation curve by curve' + '\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
+            context0, context1 = '',''
+            norm0, norm1 = '',''
+            if params.plot_norm and (descr[0] in params.dic_norm ): norm0 = ', ' + params.dic_norm[descr[0]]
+            if params.plot_norm and (descr[1] in params.dic_norm ): norm1 = ', ' + params.dic_norm[descr[1]]
+            if not params.compare_contexts:
+                if descr[0] in liste_descrContext:
+                    if params.memory_size>=2: context0 = ', '+'Memory: {} chords, decr = {}'.format(params.memory_size, params.memory_decr_ponderation)
+                    else: context0 = ', '+'Memory: {} chord, decr = {}'.format(params.memory_size, params.memory_decr_ponderation)
+                if descr[1] in liste_descrContext:
+                    if params.memory_size>=2: context1 = ', '+'Memory: {} chords, decr = {}'.format(params.memory_size, params.memory_decr_ponderation)
+                    else: context1 = ', '+'Memory: {} chord, decr = {}'.format(params.memory_size, params.memory_decr_ponderation)
+            plt.xlabel(descr[0][0].upper() + descr[0][1:] + suff0 + norm0 + context0)
+            plt.ylabel(descr[1][0].upper() + descr[1][1:] + suff1 + norm1 + context1)
+            if params.one_track and not params.compare_contexts:
+                plt.title(title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ')\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
             else:
-                plt.title(goal + '\n' + title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ')\n' + 'Normalisation on all the curves ' + '\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
+                if params.compare_instruments: goal = 'Timbre comparaison'
+                elif params.compare_scores: goal = 'Score comparaison'
+                elif params.one_track and params.compare_contexts: goal = 'Context comparaison'
+                if type_Normalisation == 'by curve':
+                    plt.title(goal + '\n' + title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ')\n' + 'Normalisation curve by curve' + '\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
+                else:
+                    plt.title(goal + '\n' + title + ' (' + descr[0][0].upper() + descr[0][1:] + suff0 + ', ' + descr[1][0].upper() + descr[1][1:] + suff1 + ')\n' + 'Normalisation on all the curves ' + '\n' + type_Temporal[0].upper() + type_Temporal[1:] + ' Representation')
 
-    plt.legend(frameon=True, framealpha=0.75)
-    plt.show()
+        plt.legend(frameon=True, framealpha=0.75)
+        plt.show()
+
+
+
+    elif type == 'temporal':
+
+
+        # Construction de onset_times régulièrement espacé
+        if onset_times is None:
+            onset_times = [0.]
+            for t in range(Points.shape[2]):
+                onset_times.append(1.+ t*2)
+            onset_times.append(onset_times[-1] + 2)
+            onset_times.append(onset_times[-1] + 1)
+
+        n_frames = len(onset_times)-1
+
+        if simultaneity:
+            m = len(descr)
+            sc = 0
+            plt.figure(1,figsize=(13, 7))
+            # Plot Score
+            if score:
+                sc = 1
+                img=mpimg.imread(score)
+                score = plt.subplot(m+sc,1,1)
+                plt.axis('off')
+                score.imshow(img)
+                plt.title(title)
+
+            for i, des in enumerate(descr):
+                dim = space.index(des)
+                ax = plt.subplot(m+sc,1,sc+1+i)
+                norm = ''
+                if params.plot_norm and (des in params.dic_norm ): norm = '\n' + params.dic_norm[des]
+                ax.set_title(des[0].upper() + des[1:] + norm)
+
+
+
+                plt.vlines(onset_times[1:n_frames], 0.0, np.max(Points[:,dim]), color='k', alpha=0.9, linestyle='--')
+                for j, track in enumerate(liste_timbres_or_scores):
+                    # Legend
+                    context = ''
+                    if des in liste_descrContext:
+                        if params.compare_contexts:
+                            if track[1]>=2: context = '\n' + 'Memory: {} chords, decr = {}'.format(track[1], track[2])
+                            else: context = '\n' + 'Memory: {} chord, decr = {}'.format(track[1], track[2])
+                        else:
+                            if params.memory_size>=2: context = '\n' + 'Memory: {} chords, decr = {}'.format(params.memory_size, params.memory_decr_ponderation)
+                            else: context = '\n' + 'Memory: {} chord, decr = {}'.format(params.memory_size, params.memory_decr_ponderation)
+
+                    if params.compare_contexts: track_print = ''
+                    else: track_print = track + '\n'
+
+                    # Descripteurs statiques
+                    if len(Points[j,dim]) == n_frames-2:
+                        plt.hlines(Points[j,dim].tolist(), onset_times[1:(n_frames-1)], onset_times[2:n_frames], color=['b','r','g','c','m','y','b','r','g'][j], label=track_print + context)
+                    # Descripteurs dynamiques
+                    elif len(Points[j,dim]) == n_frames-3:
+                        plt.plot(onset_times[2:(n_frames-1)], Points[j,dim],['b','r','g','c','m','y','b','r','g'][j]+'o', label= track_print + context)
+                        plt.hlines(Points[j,dim], [t-0.25 for t in onset_times[2:(n_frames-1)]], [t+0.25 for t in onset_times[2:(n_frames-1)]], color=['b','r','g','c','m','y','b','r','g'][j], alpha=0.9, linestyle=':'  )
+                    plt.legend(frameon=True, framealpha=0.75)
+
+        else:
+            m = len(liste_timbres_or_scores) * len(descr)
+            sc = 0
+            plt.figure(1,figsize=(13, 7))
+            # Plot Score
+            if score:
+                sc = 1
+                img=mpimg.imread(score)
+                score = plt.subplot(m+sc,1,1)
+                plt.axis('off')
+                score.imshow(img)
+                plt.title(title)
+
+            for i, des in enumerate(descr):
+                dim = space.index(des)
+                for j, track in enumerate(liste_timbres_or_scores):
+                    if i+j == 0: ax1 = plt.subplot(m+sc,1,sc+1)
+                    else: plt.subplot(m+sc,1,i*len(liste_timbres_or_scores)+j+1+sc, sharex=ax1)
+
+                    plt.vlines(onset_times[1:n_frames], 0.0, max(Points[j,dim]), color='k', alpha=0.9, linestyle='--')
+
+                    # Legend
+                    context = ''
+                    norm = ''
+                    if params.plot_norm and (des in params.dic_norm ): norm = '\n' + params.dic_norm[des]
+                    if des in liste_descrContext:
+                        if params.compare_contexts:
+                            if track[1]>=2: context = '\n' + 'Memory: {} chords, decr = {}'.format(track[1], track[2])
+                            else: context = '\n' + 'Memory: {} chord, decr = {}'.format(track[1], track[2])
+                        else:
+                            if params.memory_size>=2: context = '\n' + 'Memory: {} chords, decr = {}'.format(params.memory_size, params.memory_decr_ponderation)
+                            else: context = '\n' + 'Memory: {} chord, decr = {}'.format(params.memory_size, params.memory_decr_ponderation)
+
+                    if params.compare_contexts: track_print = ''
+                    else: track_print = track + '\n'
+
+                    # Descripteurs statiques
+                    if len(Points[j,dim]) == n_frames-2:
+                        plt.hlines(Points[j,dim].tolist(), onset_times[1:(n_frames-1)], onset_times[2:n_frames], color=['b','r','g','c','m','y','b','r','g'][i], label=track_print + des[0].upper() + des[1:] + norm + context)
+                    # Descripteurs dynamiques
+                    elif len(Points[j,dim]) == n_frames-3:
+                        plt.plot(onset_times[2:(n_frames-1)], Points[j,dim],['b','r','g','c','m','y','b','r','g'][i]+'o', label=(track_print + des[0].upper() + des[1:]) + norm + context)
+                        plt.hlines(Points[j,dim], [t-0.25 for t in onset_times[2:(n_frames-1)]], [t+0.25 for t in onset_times[2:(n_frames-1)]], color=['b','r','g','c','m','y','b','r','g'][i], alpha=0.9, linestyle=':'  )
+                    plt.legend(frameon=True, framealpha=0.75)
+
+        plt.tight_layout()
+        plt.show()
+
+
+
+
+
 
 spaceStat_NoCtx = ['roughness', 'harmonicity', 'concordance', 'concordanceTot', 'concordance3']
 spaceStat_Ctx = ['harmonicityContext', 'roughnessContext']
@@ -1533,32 +1730,41 @@ spaceDyn_NoCtx = ['harmonicChange', 'diffConcordance', 'crossConcordance', 'cros
 spaceDyn_Ctx = ['harmonicNovelty','diffConcordanceContext', 'diffRoughnessContext']
 spaceDyn = spaceDyn_NoCtx + spaceDyn_Ctx
 
+
 if params.one_track:
 
     # CHARGEMENT DES SONS ET DE LA PARTITION
-    title = 'EssaiUnissonInterv'
+    title = 'Schnittke_Cor_T2'
     instrument = 'Tutti'
     if title in params.dic_duration:
         duration = params.dic_duration[title] # en secondes
     else : duration = 26.0 # en secondes
+    # DISTRIBUTION
+    if title in params.dic_distribution: distribution = params.dic_distribution[title]
+    else :distribution = params.distribution
 
 
     y, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'.wav', duration = duration)
-    if params.distribution == 'voix':
+    if distribution == 'voix':
         y1, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Soprano.wav', duration = duration)
         y2, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Alto.wav', duration = duration)
         y3, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Tenor.wav', duration = duration)
         y4, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Basse.wav', duration = duration)
-    elif params.distribution == 'themeAcc':
+    elif distribution == 'themeAcc':
         y1, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-theme.wav', duration = duration)
         y2, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-acc.wav', duration = duration)
 
-    Notemin = 'G3' #'SuiteAccordsOrgue': A2, #Purcell : C2, #Schubert : E2, PurcellRecord : C1
+    if title in params.dic_noteMin:
+        Notemin = params.dic_noteMin[title]
+    else: Notemin = 'G3'
+
     Notemax = 'E9'
     # score = '/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/EssaiNuances-score.png'
     if os.path.exists('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/'+title+'-score.png'):
         score = '/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/'+title+'-score.png'
     else: score = []
+
+
 
     # DETECTION D'ONSETS
     delOnsets = []
@@ -1601,30 +1807,30 @@ if params.one_track:
         # for i,time in enumerate(onset_frames)
         return onset_frames
 
-    # onset_frames = OpenFrames(title)
-    onset_frames = OpenFrames('EssaiNuances')
+    onset_frames = OpenFrames(title)
+    onset_frames = OpenFrames('Schnittke_Cor_T2')
 
-    if not params.Matrix:
-        # CRÉATION DE L'INSTANCE DE CLASSE
-        if params.distribution == 'record':
-            S = SignalSepare(y, sr, [], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score, instrument)
-        elif params.distribution == 'voix':
-            S = SignalSepare(y, sr, [y1,y2,y3,y4], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score, instrument)
-        elif params.distribution == 'themeAcc':
-            S = SignalSepare(y, sr, [y1,y2], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score, instrument)
+    # CRÉATION DE L'INSTANCE DE CLASSE
+    if distribution == 'record':
+        S = SignalSepare(y, sr, [], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score, instrument)
+    elif distribution == 'voix':
+        S = SignalSepare(y, sr, [y1,y2,y3,y4], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score, instrument)
+    elif distribution == 'themeAcc':
+        S = SignalSepare(y, sr, [y1,y2], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score, instrument)
 
-        S.DetectionOnsets()
-        # with open('Onset_given_Cadence_M', 'wb') as g:
-        #      pickle.dump(S.onset_frames, g)
-        space = ['roughness','harmonicity']
-        #'roughness', 'harmonicity','concordance','concordance3','concordanceTot','harmonicChange','diffConcordance','crossConcordance','crossConcordanceTot'
-        S.Clustering()
-        if params.spectrRug_Simpl: S.SimplifySpectrum()
+    S.DetectionOnsets()
+    # with open('Onset_given_Cadence_M', 'wb') as g:
+    #      pickle.dump(S.onset_frames, g)
+    S.Clustering()
+
+    if params.spectrRug_Simpl: S.SimplifySpectrum()
+
+    if not params.Matrix and not params.compare_contexts:
+        space = ['concordance']
         S.Context()
         S.ComputeDescripteurs(space = space)
         # print(S.activation[:,1:-1])
         S.Affichage(space = space, end = duration)
-
 
         if params.test_stability:
             def stability(power):
@@ -1635,7 +1841,28 @@ if params.one_track:
             print('\n    {}, {}\n    Avec normalisation théorique : δ = {}\n    Avec normalisation optimale (α = {}) : δ = {}\n    Rapport theor/opt = {}\n'.format(title, space[1], round(stability(params.dic_test_norm[space[1]]), 3), round(res.x[0], 3),round(stability(res.x[0]),3), round(stability(params.dic_test_norm[space[1]])/stability(res.x[0]), 3)))
 
 
-    else:
+
+    elif params.compare_contexts:
+        list_context = [('mean', 0, 1),('mean',2,1),('mean',2,0)]
+        dic_context = {list_context[i]:i+1 for i in range(len(list_context))}
+        dic_context[('mean', 0, 1)] = 0
+
+
+        space = ['diffRoughnessContext']
+        # Construction Matrice Points
+        Points = []
+        for ctx in list_context:
+            S.Context(type = ctx[0], size = ctx[1], decr = ctx[2])
+            S.ComputeDescripteurs(space = space)
+            Points.append(S.Points(space))
+
+        Points = np.asarray(Points)
+        print(Points.shape)
+        # Points = Normalise(Points, list_context, dic_context)
+        spacePlot = space
+        Visualize(Points, spacePlot, space, list_context, dic_context, type='temporal', simultaneity = False, score = S.score, onset_times = S.onset_times)
+
+    elif params.Matrix:
         liste = ['Brd + Chem']
         dic = {liste[i]:i+1 for i in range(len(liste))}
         space = spaceDyn_NoCtx
@@ -1663,7 +1890,7 @@ if params.compare_instruments:
 
     title = 'Cadence_M5'
     duration = 9.0
-    # score = 'Exemples/'+ title +'-score.png'
+    score = '/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/'+ 'CadenceM2' +'-score.png'
     Notemin = 'C3'
     Notemax = 'E9'
 
@@ -1682,7 +1909,7 @@ if params.compare_instruments:
 
     Clustered(Points, spacePlot, space)
     Visualize(Points, spacePlot, space, liste_timbres, dic_timbres)#, liste_timbres_or_scores = ['Bourdon8', 'Cheminée8','Brd + Chm','Tutti'])
-
+    # Visualize(Points, spacePlot, space, liste_timbres[:2], dic_timbres, type = 'temporal',score = score)
 
 if params.compare_scores:
     # title = 'Cadence_M'
@@ -1711,6 +1938,9 @@ if params.compare_scores:
 
     Clustered(Points, spacePlot, space)
     Visualize(Points, spacePlot, space, liste_scores, dic_scores)
+
+
+
 
 
 
