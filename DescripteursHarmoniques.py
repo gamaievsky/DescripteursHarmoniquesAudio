@@ -104,6 +104,7 @@ class SignalSepare:
         self.times = []
         self.Onset_given = True
         self.onset_times = []
+        self.onset_times_graph = []
         self.onset_frames = onset_frames
         self.Percu = []
         self.Chrom_ONSETS = []
@@ -130,6 +131,8 @@ class SignalSepare:
         self.concordance3 = []
         self.tension = []
         self.roughness = []
+        self.chrom_harmonicity = []
+        self.liste_partials = []
         self.tensionSignal = []
         self.chrom_roughness = []
         self.roughnessSignal = []
@@ -144,6 +147,7 @@ class SignalSepare:
         self.harmonicity = []
         self.virtualPitch = []
         self.context = []
+        self.contextSimpl = []
         self.energyContext = []
         self.chrom_harmonicNovelty = []
         self.harmonicNovelty = []
@@ -155,6 +159,7 @@ class SignalSepare:
         self.chrom_diffConcordanceContext = []
         self.diffRoughnessContext = []
         self.chrom_diffRoughnessContext = []
+
 
 
 
@@ -254,15 +259,33 @@ class SignalSepare:
         #Synchronisation sur les onsets, en enlevant le début et la fin des longues frames
         self.chromSync = np.zeros((self.n_bins,self.n_frames))
         self.n_att = int(librosa.time_to_frames(T_att, sr=self.sr, hop_length = STEP))
-        for j in range(self.n_frames):
-            if j==0:
-                for i in range(self.n_bins):
-                    self.chromSync[i,j] = np.median(self.Chrom[i][self.onset_frames[j]:self.onset_frames[j+1]])
-            else:
-                for i in range(self.n_bins):
-                    self.chromSync[i,j] = np.median(self.Chrom[i][(self.onset_frames[j]+self.n_att):(self.onset_frames[j+1]-self.n_att)])
+        # for j in range(self.n_frames):
+        #     if j==0:
+        #         for i in range(self.n_bins):
+        #             self.chromSync[i,j] = np.median(self.Chrom[i][self.onset_frames[j]:self.onset_frames[j+1]])
+        #     else:
+        #         for i in range(self.n_bins):
+        #             self.chromSync[i,j] = np.median(self.Chrom[i][(self.onset_frames[j]+self.n_att):(self.onset_frames[j+1])])
+        Δmin = 0.1 # en secondes
+        for i in range(self.n_bins):
+            f = self.fmin*2**(i/BINS_PER_OCTAVE)
+            T_ret = 1.5 / (f * (2**(1.0/(12*4)) - 1))
+            for j in range(self.n_frames):
+                if j==0: self.chromSync[i,j] = np.median(self.Chrom[i][self.onset_frames[j]:self.onset_frames[j+1]])
+                else:
+                    if T_ret < (self.onset_times[j+1] - self.onset_times[j+1]) - Δmin:
+                        self.chromSync[i,j] = np.median(self.Chrom[i][(self.onset_frames[j]+int(librosa.time_to_frames(T_ret, sr=self.sr, hop_length = STEP))):(self.onset_frames[j+1])])
+                    else:
+                        self.chromSync[i,j] = np.median(self.Chrom[i][(self.onset_frames[j+1]-int(librosa.time_to_frames(Δmin, sr=self.sr, hop_length = STEP))):(self.onset_frames[j+1])])
+
+
+
+
         self.chromSync[np.isnan(self.chromSync)] = 0
+        self.chromSync[:,0] = np.zeros(self.n_bins)
+        self.chromSync[:,-1] = np.zeros(self.n_bins)
         self.chromSyncDB = librosa.amplitude_to_db(self.chromSync, ref=np.max)
+
 
         #Calcul de l'énergie
         for t in range(self.n_frames):
@@ -318,7 +341,6 @@ class SignalSepare:
                 self.activation[:,0] = 0
                 self.activation[:,self.n_frames-1] = 0
             elif title in params.list_3_voix:
-                'il y a 3 voix'
                 self.activation[-1] = np.zeros(self.n_frames)
 
 
@@ -328,7 +350,7 @@ class SignalSepare:
             self.n_notes[-1] = 0
 
 
-    def Context(self, type = params.memory_type, size = params.memory_size, decr = params.memory_decr_ponderation):
+    def Context(self, type = params.memory_type, size = params.memory_size - 1, decr = params.memory_decr_ponderation):
 
         #Construction du context harmonique
         self.context = np.zeros((self.n_bins,self.n_frames))
@@ -349,7 +371,7 @@ class SignalSepare:
         # Memory = int
         elif isinstance(size,int):
             if type == 'max':
-                for t in range(1,+1):
+                for t in range(1,size+1):
                     self.context[:,t] = np.fmax(self.chromSync[:,t], self.context[:,t-1])
                 for t in range(size+1,self.n_frames):
                     self.context[:,t] = np.amax(self.chromSync[:,(t-size):(t+1)], axis = 1)
@@ -367,17 +389,41 @@ class SignalSepare:
             self.energyContext.append(LA.norm(self.context[:,t])**2)
 
     def SimplifySpectrum(self):
-        self.chromSyncSimpl = np.copy(self.chromSync)
+        self.chromSyncSimpl = np.zeros(self.chromSync.shape)
+        self.contextSimpl = np.zeros(self.context.shape)
         self.chromPistesSyncSimpl= np.copy(self.chromPistesSync)
+        δ = params.δ
+        if distribution == 'themeAcc' or distribution == 'voix':
+            for t in range(self.n_frames):
+                for i in range(10, self.n_bins - 10):
+                    for p in range(len(self.pistes)):
+                        if self.chromPistesSync[p][i,t] < np.max(self.chromPistesSync[p][i-δ:i+δ+1,t]): self.chromPistesSyncSimpl[p][i,t] = 0
+                        else: self.chromPistesSyncSimpl[p][i,t] = np.sum(self.chromPistesSync[p][i-δ:i+δ+1,t])
+                    # Global
+                    if self.chromSync[i,t] < np.max(self.chromSync[i-δ:i+δ+1,t]): self.chromSyncSimpl[i,t] = 0
+                    else: self.chromSyncSimpl[i,t] = np.sum(self.chromSync[i-δ:i+δ+1,t])
+                    # Contexte
+                    if self.context[i,t] < np.max(self.context[i-δ:i+δ+1,t]): self.contextSimpl[i,t] = 0
+                    else: self.contextSimpl[i,t] = np.sum(self.context[i-δ:i+δ+1,t])
+
+            # for p in range(len(self.pistes)):
+            #     self.chromSyncSimpl += self.chromPistesSyncSimpl[p]
+        elif distribution == 'record':
+            for t in range(self.n_frames):
+                for i in range(10, self.n_bins - 10):
+                    # Global
+                    if self.chromSync[i,t] < np.max(self.chromSync[i-δ:i+δ+1,t]): self.chromSyncSimpl[i,t] = 0
+                    else: self.chromSyncSimpl[i,t] = np.sum(self.chromSync[i-δ:i+δ+1,t])
+                    # Contexte
+                    if self.context[i,t] < np.max(self.context[i-δ:i+δ+1,t]): self.contextSimpl[i,t] = 0
+                    else: self.contextSimpl[i,t] = np.sum(self.context[i-δ:i+δ+1,t])
+
+        # Liste des partiels de self.chromSyncSimpl
+        self.liste_partials = []
         for t in range(self.n_frames):
-            for i in range(1, self.n_bins - 1):
-                # Simplification de self.chromSync
-                if not self.chromSync[i-1,t]<self.chromSync[i,t]>self.chromSync[i+1,t]:
-                    self.chromSyncSimpl[i-1,t] = 0
-                # Simplification de self.chromPistesSync
-                for k in range(len(self.pistes)):
-                    if not self.chromPistesSync[k][i-1,t]<self.chromPistesSync[k][i,t]>self.chromPistesSync[k][i+1,t]:
-                        self.chromPistesSyncSimpl[k][i-1,t] = 0
+            self.liste_partials.append([])
+            for k in range(self.n_bins):
+                if self.chromSyncSimpl[k,t] > 0: self.liste_partials[t].append(k)
 
 
     def Concordance(self):
@@ -389,15 +435,16 @@ class SignalSepare:
             for l in range(k+1, self.n_pistes):
                 self.chrom_concordance += np.multiply(self.chromPistesSync[k], self.chromPistesSync[l])
 
-        # Normalisation par l'énergie et per le nombre de notes
+        # Normalisation par l'énergie et par le nombre de notes
         for t in range(self.n_frames):
             if self.n_notes[t] >= 2:
                 self.chrom_concordance[:,t] *= (self.n_notes[t]**(2*params.norm_conc)/(self.n_notes[t]*(self.n_notes[t]-1)/2)) / (self.energy[t]**params.norm_conc)
 
-
+        self.chrom_concordance[:,0] = 0
+        self.chrom_concordance[:,self.n_frames-1] = 0
         self.concordance = self.chrom_concordance.sum(axis=0)
-        self.concordance[0]=0
-        self.concordance[self.n_frames-1]=0
+        # self.concordance[0]=0
+        # self.concordance[self.n_frames-1]=0
 
 
     def ConcordanceTot(self):
@@ -411,10 +458,8 @@ class SignalSepare:
                     self.chrom_concordanceTot[:,t] = np.multiply(self.chrom_concordanceTot[:,t], self.chromPistesSync[k][:,t])
             if self.n_notes[t]>=1:
                 self.chrom_concordanceTot[:,t] = np.divide((self.n_notes[t]**(self.n_notes[t]*params.norm_concTot)) * self.chrom_concordanceTot[:,t], LA.norm(self.chromSync[:,t], self.n_notes[t])**(self.n_notes[t]*params.norm_concTot))
-            self.concordanceTot.append(self.chrom_concordanceTot[:,t].sum(axis=0)**(1./self.n_notes[t]))
-            # if self.n_notes[t]>=1:
-            #     self.chrom_concordanceTot[:,t] = np.divide((self.n_notes[t]**(self.n_notes[t]*params.norm_concTot)) * self.chrom_concordanceTot[:,t], LA.norm(self.chromSync[:,t], self.n_notes[t])**(self.n_notes[t]*params.norm_concTot))
-            # self.concordanceTot.append(self.chrom_concordanceTot[:,t].sum(axis=0)**(1./self.n_notes[t]))
+            self.concordanceTot.append(self.chrom_concordanceTot[:,t].sum(axis=0))#**(1./self.n_notes[t]))
+
 
         self.chrom_concordanceTot[:,0] = 0
         self.chrom_concordanceTot[:,self.n_frames-1] = 0
@@ -434,10 +479,11 @@ class SignalSepare:
             if self.n_notes[t] >= 3:
                 self.chrom_concordance3[:,t] *= (self.n_notes[t]**(3*params.norm_conc3)/(self.n_notes[t]*(self.n_notes[t]-1)*(self.n_notes[t]-2)/6)) / LA.norm(self.chromSync[:,t],ord=3)**(3*params.norm_conc3)
 
-
+        self.chrom_concordance3[:,0] = 0
+        self.chrom_concordance3[:,self.n_frames-1] = 0
         self.concordance3 = self.chrom_concordance3.sum(axis=0)
-        self.concordance3[0]=0
-        self.concordance3[self.n_frames-1]=0
+        # self.concordance3[0]=0
+        # self.concordance3[self.n_frames-1]=0
 
 
     def Roughness(self):
@@ -448,56 +494,46 @@ class SignalSepare:
         #     return ((1/16)*np.power(2,SPL/10))
         self.chrom_roughness = np.zeros((self.n_bins,self.n_frames))
         self.roughness = np.zeros(self.n_frames)
-        for b1 in range(self.n_bins):
-            for b2 in range(self.n_bins):
+
+        for b1 in range(self.n_bins-1):
+            for b2 in range(b1+1,self.n_bins):
                 # Modèle de Sethares
                 f1 = self.fmin*2**(b1/BINS_PER_OCTAVE)
                 f2 = self.fmin*2**(b2/BINS_PER_OCTAVE)
                 freq = [f1, f2]
                 freq.sort()
-                s = 0.44*(np.log(params.β2/params.β1)/(params.β2-params.β1))*(freq[1]-freq[0])/(freq[0]**(0.477))
-                rug = np.exp(-params.β1*s)-np.exp(-params.β2*s)
+                if params.mod_rough == 'sethares + KK':
+                    s = (1/2.27)*(np.log(params.β2/params.β1)/(params.β2-params.β1))/(freq[0]**(0.477))
+                elif params.mod_rough == 'sethares':
+                    s = 0.24/(0.021*freq[0] + 19)
+                rug = np.exp(-params.β1*s*(freq[1]-freq[0]))-np.exp(-params.β2*s*(freq[1]-freq[0]))
 
-                for p1 in range(self.n_pistes-1):
-                    for p2 in range(p1+1, self.n_pistes):
-                        if params.spectrRug_Simpl:
-                            if params.type_rug == 'produit':
-                                self.chrom_roughness[b1] = self.chrom_roughness[b1] + (self.chromPistesSyncSimpl[p1][b1] * self.chromPistesSyncSimpl[p2][b2,:]) * rug/2
-                                self.chrom_roughness[b2] = self.chrom_roughness[b2] + (self.chromPistesSyncSimpl[p1][b1] * self.chromPistesSyncSimpl[p2][b2,:]) * rug/2
-                            elif params.type_rug == 'minimum':
-                                self.chrom_roughness[b1,:] = self.chrom_roughness[b1,:] + np.fmin(self.chromPistesSyncSimpl[p1][b1,:], self.chromPistesSyncSimpl[p2][b2,:]) * rug/2
-                                self.chrom_roughness[b2,:] = self.chrom_roughness[b2,:] + np.fmin(self.chromPistesSyncSimpl[p1][b1,:], self.chromPistesSyncSimpl[p2][b2,:]) * rug/2
-                        else:
-                            if params.type_rug == 'produit':
-                                self.chrom_roughness[b1] = self.chrom_roughness[b1] + (self.chromPistesSync[p1][b1] * self.chromPistesSync[p2][b2]) * rug/2
-                                self.chrom_roughness[b2] = self.chrom_roughness[b2] + (self.chromPistesSync[p1][b1] * self.chromPistesSync[p2][b2]) * rug/2
-                            elif params.type_rug == 'minimum':
-                                self.chrom_roughness[b1] = self.chrom_roughness[b1] + np.fmin(self.chromPistesSync[p1][b1], self.chromPistesSync[p2][b2]) * rug/2
-                                self.chrom_roughness[b2] = self.chrom_roughness[b2] + np.fmin(self.chromPistesSync[p1][b1], self.chromPistesSync[p2][b2]) * rug/2
+                if not params.type_rug_signal:
+                    for p1 in range(self.n_pistes-1):
+                        for p2 in range(p1+1, self.n_pistes):
+                            if params.rug_simpl:
+                                self.chrom_roughness[b1] += (self.chromPistesSyncSimpl[p1][b1] * self.chromPistesSyncSimpl[p2][b2] + self.chromPistesSyncSimpl[p1][b2] * self.chromPistesSyncSimpl[p2][b1]) * rug/2
+                                self.chrom_roughness[b2] += (self.chromPistesSyncSimpl[p1][b1] * self.chromPistesSyncSimpl[p2][b2] + self.chromPistesSyncSimpl[p1][b2] * self.chromPistesSyncSimpl[p2][b1]) * rug/2
+                            else:
+                                self.chrom_roughness[b1] += (self.chromPistesSync[p1][b1] * self.chromPistesSync[p2][b2] + self.chromPistesSync[p1][b2] * self.chromPistesSync[p2][b1]) * rug/2
+                                self.chrom_roughness[b2] += (self.chromPistesSync[p1][b1] * self.chromPistesSync[p2][b2] + self.chromPistesSync[p1][b2] * self.chromPistesSync[p2][b1]) * rug/2
+                else:
+                    if params.rug_simpl:
+                        self.chrom_roughness[b1] += (self.chromSyncSimpl[b1] * self.chromSyncSimpl[b2]) * rug/2
+                        self.chrom_roughness[b2] += (self.chromSyncSimpl[b1] * self.chromSyncSimpl[b2]) * rug/2
+                    else:
+                        self.chrom_roughness[b1] += (self.chromSync[b1] * self.chromSync[b2]) * rug/2
+                        self.chrom_roughness[b2] += (self.chromSync[b1] * self.chromSync[b2]) * rug/2
 
 
         # Normalisation par l'énergie et par le nombre de n_notes
-        if params.type_rug == 'produit':
-            for t in range(self.n_frames):
-                self.chrom_roughness[:,t] *= (self.n_notes[t]**(2*params.norm_rug) / (self.n_notes[t]*(self.n_notes[t]-1)/2)) / (self.energy[t]**params.norm_rug)
-        elif params.type_rug == 'minimum':
-            for t in range(self.n_frames):
-                self.chrom_roughness[:,t] *= (self.n_notes[t]**params.norm_rug / (self.n_notes[t]*(self.n_notes[t]-1)/2)) / (LA.norm(self.chromSync[t],1)**params.norm_rug)
-
-
-
-        # # Normalisation en fonction du nombre de notes
-        # if params.norm_nbNotes:
-        #     for t in range(self.n_frames):
-        #         if self.n_notes[t]>=2:
-        #             self.chrom_roughness[:,t] = self.chrom_roughness[:,t]/(self.n_notes[t]*(self.n_notes[t]-1)/2)
-        #
-        # if params.norm_rug:
-        #     if params.type_rug == 'produit': norm = self.energy
-        #     else: norm = np.sqrt(self.energy)
-        #     self.roughness = np.divide(self.chrom_roughness.sum(axis=0),norm)
-        # else : self.roughness = self.chrom_roughness.sum(axis=0)
-
+        for t in range(self.n_frames):
+            if not params.type_rug_signal:
+                if self.n_notes[t] >= 2:
+                    self.chrom_roughness[:,t] *= (self.n_notes[t]**(2*params.norm_rug) / (self.n_notes[t]*(self.n_notes[t]-1)/2.0)) / (self.energy[t]**params.norm_rug)
+            else:
+                self.chrom_roughness[:,t] /= self.energy[t]**params.norm_rug
+        self.chrom_roughness[:,0] = 0
         self.roughness = self.chrom_roughness.sum(axis=0)
         self.roughness[0]=0
         self.roughness[self.n_frames-1]=0
@@ -515,44 +551,39 @@ class SignalSepare:
                 s = 0.44*(np.log(params.β2/params.β1)/(params.β2-params.β1))*(freq[1]-freq[0])/(freq[0]**(0.477))
                 rug = np.exp(-params.β1*s)-np.exp(-params.β2*s)
 
-                if params.type_rug == 'produit':
-                    self.roughnessSignal = self.roughnessSignal + (self.chromSync[b1,:] * self.chromSync[b2,:]) * rug
-                elif params.type_rug == 'minimum':
-                    self.roughnessSignal = self.roughnessSignal + np.fmin(self.chromSync[b1,:], self.chromSync[b2,:]) * rug
-                # self.roughnessSignal = self.roughnessSignal + (self.chromSync[b1,:] * self.chromSync[b2,:]) * rug
+                self.roughnessSignal = self.roughnessSignal + (self.chromSync[b1,:] * self.chromSync[b2,:]) * rug
         if params.norm_rug: self.roughnessSignal = np.divide(self.roughnessSignal, np.power(self.energy,1.0))
         self.roughnessSignal[0]=0
         self.roughnessSignal[self.n_frames-1]=0
 
 
     def Tension(self):
-        #Calcul du spectre du signal en 1/4 de tons pour avoir un calcul de la tension en temps raisonnable
-        ChromPistes_ONSETS = []
-        for k, voice in enumerate(self.pistes):
-            ChromPistes_ONSETS.append(np.abs(librosa.cqt(y=voice, sr=self.sr, hop_length = STEP, fmin= self.fmin, bins_per_octave=BINS_PER_OCTAVE_ONSETS, n_bins=self.n_bins_ONSETS)))
-            self.ChromPistesSync_ONSETS.append(np.zeros((self.n_bins_ONSETS,self.n_frames)))
-            for j in range(self.n_frames):
-                for i in range(self.n_bins_ONSETS):
-                    self.ChromPistesSync_ONSETS[k][i,j] = np.median(ChromPistes_ONSETS[k][i][(self.onset_frames[j]+self.n_att):(self.onset_frames[j+1]-self.n_att)])
 
-        #Clacul tension
         self.tension = np.zeros(self.n_frames)
-        for b1 in range(self.n_bins_ONSETS):
-            for b2 in range(self.n_bins_ONSETS):
-                for b3 in range(self.n_bins_ONSETS):
+        # liste des partiels
+        set_partials = set()
+        for t in range(self.n_frames):
+            set_partials = set_partials.union(set(self.liste_partials[t]))
+        liste_partials_full = list(set_partials)
+        liste_partials_full.sort()
 
-                    int = [abs(b3-b1), abs(b2-b1), abs(b3-b2)]
-                    int.sort()
-                    monInt = int[1]-int[0]
-                    if monInt == 0: tens = 1
-                    # elif monInt == 1 : tens = 0.5
-                    else: tens = 0
-                    # tens = np.exp(-((int[1]-int[0])* BINS_PER_OCTAVE/(12*params.δ))**2)
-                    for p1 in range(self.n_pistes-2):
-                        for p2 in range(p1+1, self.n_pistes-1):
-                            for p3 in range(p2+1, self.n_pistes):
-                                self.tension = self.tension + (self.ChromPistesSync_ONSETS[p1][b1,:] * self.ChromPistesSync_ONSETS[p2][b2,:] * self.ChromPistesSync_ONSETS[p3][b3,:]) * tens
-        self.tension = np.divide(self.tension, np.power(self.energy, 3/2))
+
+        # Calcul de la tension
+        long = len(liste_partials_full)
+        for i1 in range(long-2) :
+            for i2 in range(i1+1,long-1):
+                for i3 in range(i2+1,long):
+                    int1, int2 = liste_partials_full[i2] - liste_partials_full[i1], liste_partials_full[i3] - liste_partials_full[i2]
+                    tens = np.exp(-((int2-int1) / (0.6*BINS_PER_OCTAVE/12.0))**2)
+                    for t in range(self.n_frames):
+                        self.tension[t] += self.chromSyncSimpl[liste_partials_full[i1],t] * self.chromSyncSimpl[liste_partials_full[i2],t] * self.chromSyncSimpl[liste_partials_full[i3],t] * tens
+
+        # Normalisation par l'énergie et par le nombre de n_notes
+        for t in range(self.n_frames):
+            self.tension[t] /= self.energy[t]**(params.norm_tension*3/2.0)
+            # if self.n_notes[t] >= 3:
+                # self.tension[t] *= (self.n_notes[t]**(3*params.norm_tension) / (self.n_notes[t]*(self.n_notes[t]-1)*(self.n_notes[t]-2)/6.0)) / (self.energy[t]**(params.norm_tension*3/2.0))
+
         self.tension[0]=0
         self.tension[self.n_frames-1]=0
 
@@ -620,11 +651,11 @@ class SignalSepare:
                 self.chrom_harmonicChange[:,t] = self.chromSync[:,t+1]/np.sqrt(self.energy[t+1]) - self.context[:,t]/np.sqrt(self.energyContext[t])
 
             elif params.norm_harmChange == 'general':
-                self.chrom_harmonicChange[:,t] = np.divide(self.chromSync[:,t+1] - self.context[:,t], (self.energy[t+1]*self.energyContext[t])**(1/4))
+                self.chrom_harmonicChange[:,t] = (self.chromSync[:,t+1] - self.context[:,t]) / (self.energy[t+1]*self.energyContext[t])**(1.0/4)
 
             if params.type_harmChange == 'absolute': self.chrom_harmonicChange[:,t] = np.abs(self.chrom_harmonicChange[:,t])
 
-        self.harmonicChange = self.chrom_harmonicChange.sum(axis=0)
+        self.harmonicChange = np.sum(np.power(self.chrom_harmonicChange,1), axis=0)
         self.harmonicChange[0]=0
         self.harmonicChange[-1]=0
 
@@ -646,48 +677,23 @@ class SignalSepare:
                 if self.chrom_harmonicNovelty[:,t][i]<0: self.chrom_harmonicNovelty[:,t][i] = 0
 
         # Construction des Nouveautés harmoniques
-        self.harmonicNovelty = self.chrom_harmonicNovelty.sum(axis=0)
+        self.harmonicNovelty = np.exp(self.chrom_harmonicNovelty.sum(axis=0))
         if params.type_Novelty == 'dyn':
             self.harmonicNovelty = self.harmonicNovelty[1:]
         self.harmonicNovelty[0]=0
         self.harmonicNovelty[-1]=0
 
 
-
-
-
     def DiffConcordance(self):
         self.chrom_diffConcordance = np.zeros((self.n_bins,self.n_frames-1))
-
-        if params.norm_diffConc == 'None':
-            if not params.theme_diffConc:
-                for t in range(self.n_frames-1):
-                    self.chrom_diffConcordance[:,t] = np.multiply(self.chromSync[:,t], self.chromSync[:,t+1])
-            else :
-                for t in range(self.n_frames-1):
-                    if self.activation[0,t+1]:
-                        self.chrom_diffConcordance[:,t] = np.multiply(self.chromSync[:,t], self.chromPistesSync[0][:,t+1])
-
-        elif params.norm_diffConc == 'general':
-            if not params.theme_diffConc:
-                for t in range(self.n_frames-1):
-                    self.chrom_diffConcordance[:,t] = np.multiply(self.chromSync[:,t], self.chromSync[:,t+1])
-                    self.chrom_diffConcordance[:,t] /= np.sqrt(self.energy[t] * self.energy[t+1])
-            else :
-                for t in range(self.n_frames-1):
-                    if self.activation[0,t+1]:
-                        self.chrom_diffConcordance[:,t] = np.multiply(self.chromSync[:,t], self.chromPistesSync[0][:,t+1]) / np.sqrt(self.energy[t] * self.energyPistes[0][t+1])
-
-        elif params.norm_diffConc == 'note_by_note':
+        if not params.theme_diffConc:
             for t in range(self.n_frames-1):
-                for k in range(self.n_pistes):
-                    for l in range(self.n_pistes):
-                        if self.activation[k,t] and self.activation[l,t+1]:
-                            self.chrom_diffConcordance[:,t] += np.divide(np.multiply(self.chromPistesSync[k][:,t], self.chromPistesSync[l][:,t+1]), np.sqrt(self.energyPistes[k][t] * self.energyPistes[l][t+1]))
-                self.chrom_diffConcordance[:,t] /= self.n_notes[t]*self.n_notes[t+1]
-
-
-
+                self.chrom_diffConcordance[:,t] = np.multiply(self.chromSync[:,t], self.chromSync[:,t+1])
+                self.chrom_diffConcordance[:,t] /= np.sqrt(self.energy[t] * self.energy[t+1]) ** params.norm_diffConc
+        else :
+            for t in range(self.n_frames-1):
+                if self.activation[0,t+1]:
+                    self.chrom_diffConcordance[:,t] = np.multiply(self.chromSync[:,t], self.chromPistesSync[0][:,t+1]) / np.sqrt(self.energy[t] * self.energyPistes[0][t+1])** params.norm_diffConc
 
         self.diffConcordance = self.chrom_diffConcordance.sum(axis=0)
         self.diffConcordance[0]=0
@@ -698,22 +704,30 @@ class SignalSepare:
         # Construction du spectre harmonique
         dec = BINS_PER_OCTAVE/6 # décalage d'un ton pour tenir compte de l'épaisseur des gaussiennes
         epaiss = int(np.rint(BINS_PER_OCTAVE/(2*params.σ)))
+        print(epaiss)
         SpecHarm = np.zeros(2*int(dec) + int(np.rint(BINS_PER_OCTAVE * np.log2(params.κ))))
         for k in range(params.κ):
             pic =  int(dec + np.rint(BINS_PER_OCTAVE * np.log2(k+1)))
             for i in range(-epaiss, epaiss+1):
                 SpecHarm[pic + i] = 1/(k+1)**params.decr
+        len_corr = self.n_bins + len(SpecHarm) - 1
 
         # Correlation avec le spectre réel
+        self.chrom_harmonicity = np.zeros((len_corr,self.n_frames))
         self.harmonicity = []
         for t in range(self.n_frames):
-            self.harmonicity.append(max(np.correlate(np.power(self.chromSync[:,t],params.norm_harmonicity), SpecHarm,"full")) / self.energy[t]**(params.norm_harmonicity/2))
+            self.chrom_harmonicity[:,t] = np.correlate(np.power(self.chromSync[:,t],params.norm_harmonicity), SpecHarm,"full") / self.energy[t]**(params.norm_harmonicity * params.norm_harm/2)
+            self.harmonicity.append(np.exp(max(self.chrom_harmonicity[:,t])))
 
             # Virtual Pitch
-            self.virtualPitch.append(np.argmax(np.correlate(np.power(self.chromSync[:,t],2), SpecHarm,"full")))
+            self.virtualPitch.append(np.argmax(self.chrom_harmonicity[:,t]))
 
         virtualNotes = librosa.hz_to_note([self.fmin * (2**((i-len(SpecHarm)+dec+1)/BINS_PER_OCTAVE)) for i in self.virtualPitch] , cents = False)
+        global f_corr_min
+        f_corr_min =  self.fmin * (2**((-len(SpecHarm)+dec+1)/BINS_PER_OCTAVE))
         print(virtualNotes[1:self.n_frames-1])
+        self.chrom_harmonicity[:,0] = 0
+        self.chrom_harmonicity[:,self.n_frames-1] = 0
         self.harmonicity[0]=0
         self.harmonicity[self.n_frames-1]=0
 
@@ -748,8 +762,11 @@ class SignalSepare:
                 f2 = self.fmin*2**(b2/BINS_PER_OCTAVE)
                 freq = [f1, f2]
                 freq.sort()
-                s = 0.44*(np.log(params.β2/params.β1)/(params.β2-params.β1))*(freq[1]-freq[0])/(freq[0]**(0.477))
-                rug = np.exp(-params.β1*s)-np.exp(-params.β2*s)
+                if params.mod_rough == 'sethares + KK':
+                    s = (1/2.27)*(np.log(params.β2/params.β1)/(params.β2-params.β1))/(freq[0]**(0.477))
+                elif params.mod_rough == 'sethares':
+                    s = 0.24/(0.021*freq[0] + 19)
+                rug = np.exp(-params.β1*s*(freq[1]-freq[0]))-np.exp(-params.β2*s*(freq[1]-freq[0]))
 
                 for t in range(self.n_frames):
                     self.chrom_roughnessContext[b1,t] += (self.context[b1,t] * self.context[b2,t]) * rug / 2
@@ -789,12 +806,20 @@ class SignalSepare:
                     f2 = self.fmin*2**(b2/BINS_PER_OCTAVE)
                     freq = [f1, f2]
                     freq.sort()
-                    s = 0.44*(np.log(params.β2/params.β1)/(params.β2-params.β1))*(freq[1]-freq[0])/(freq[0]**(0.477))
-                    rug = np.exp(-params.β1*s)-np.exp(-params.β2*s)
+                    if params.mod_rough == 'sethares + KK':
+                        s = (1/2.27)*(np.log(params.β2/params.β1)/(params.β2-params.β1))/(freq[0]**(0.477))
+                    elif params.mod_rough == 'sethares':
+                        s = 0.24/(0.021*freq[0] + 19)
+                    rug = np.exp(-params.β1*s*(freq[1]-freq[0]))-np.exp(-params.β2*s*(freq[1]-freq[0]))
+
 
                     for t in range(self.n_frames-1):
-                        self.chrom_diffRoughnessContext[b1,t] += (self.context[b1,t] * self.chromPistesSync[0][b2,t+1]) * rug / 2
-                        self.chrom_diffRoughnessContext[b2,t] += (self.context[b1,t] * self.chromPistesSync[0][b2,t+1]) * rug / 2
+                        if params.rug_simpl:
+                            self.chrom_diffRoughnessContext[b1,t] += (self.contextSimpl[b1,t] * self.chromPistesSyncSimpl[0][b2,t+1]) * rug / 2
+                            self.chrom_diffRoughnessContext[b2,t] += (self.contextSimpl[b1,t] * self.chromPistesSyncSimpl[0][b2,t+1]) * rug / 2
+                        else:
+                            self.chrom_diffRoughnessContext[b1,t] += (self.context[b1,t] * self.chromPistesSync[0][b2,t+1]) * rug / 2
+                            self.chrom_diffRoughnessContext[b2,t] += (self.context[b1,t] * self.chromPistesSync[0][b2,t+1]) * rug / 2
 
         else:
             for b1 in range(self.n_bins):
@@ -803,12 +828,22 @@ class SignalSepare:
                     f2 = self.fmin*2**(b2/BINS_PER_OCTAVE)
                     freq = [f1, f2]
                     freq.sort()
-                    s = 0.44*(np.log(params.β2/params.β1)/(params.β2-params.β1))*(freq[1]-freq[0])/(freq[0]**(0.477))
-                    rug = np.exp(-params.β1*s)-np.exp(-params.β2*s)
+                    if params.mod_rough == 'sethares + KK':
+                        s = (1/2.27)*(np.log(params.β2/params.β1)/(params.β2-params.β1))/(freq[0]**(0.477))
+                    elif params.mod_rough == 'sethares':
+                        s = 0.24/(0.021*freq[0] + 19)
+                    rug = np.exp(-params.β1*s*(freq[1]-freq[0]))-np.exp(-params.β2*s*(freq[1]-freq[0]))
+
 
                     for t in range(self.n_frames-1):
-                        self.chrom_diffRoughnessContext[b1,t] += (self.context[b1,t] * self.chromSync[b2,t+1]) * rug / 2
-                        self.chrom_diffRoughnessContext[b2,t] += (self.context[b1,t] * self.chromSync[b2,t+1]) * rug / 2
+                        if params.rug_simpl:
+                            # self.chrom_diffRoughnessContext[b1,t] += (self.contextSimpl[b1,t] * self.chromSyncSimpl[b2,t+1]) * rug / 2
+                            # self.chrom_diffRoughnessContext[b2,t] += (self.contextSimpl[b1,t] * self.chromSyncSimpl[b2,t+1]) * rug / 2
+                            self.chrom_diffRoughnessContext[b1,t] += (self.contextSimpl[b1,t] * self.chromSyncSimpl[b2,t+1]) * rug / 2
+                            self.chrom_diffRoughnessContext[b2,t] += (self.contextSimpl[b1,t] * self.chromSyncSimpl[b2,t+1]) * rug / 2
+                        else:
+                            self.chrom_diffRoughnessContext[b1,t] += (self.context[b1,t] * self.chromSync[b2,t+1]) * rug / 2
+                            self.chrom_diffRoughnessContext[b2,t] += (self.context[b1,t] * self.chromSync[b2,t+1]) * rug / 2
 
 
 
@@ -821,6 +856,9 @@ class SignalSepare:
                     self.chrom_diffRoughnessContext[:,t] = np.divide(self.chrom_diffRoughnessContext[:,t], np.sqrt(self.energyContext[t]*self.energy[t+1]))
 
         self.diffRoughnessContext = self.chrom_diffRoughnessContext.sum(axis=0)
+        self.diffRoughnessContext[0]=0
+        self.diffRoughnessContext[self.n_frames-2]=0
+
 
 
 
@@ -902,26 +940,52 @@ class SignalSepare:
 
     def Affichage(self, space = ['concordance', 'concordanceTot'], begin = "first", end = "last"):
         #Plot de la recherche d'ONSETS
+        if title in params.dic_xcoords: self.onset_times_graph = np.array(params.dic_xcoords[title])
+        else: self.onset_times_graph = self.onset_times
+
         if params.plot_onsets:
-            plt.figure(1,figsize=(13, 7))
-            ax1 = plt.subplot(3, 1, 1)
-            librosa.display.specshow(self.ChromDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.times,cmap=cmap)
-            plt.title('CQT spectrogram')
+            fig, ax = plt.subplots(figsize=(13, 7))
+            # Partition
+            if params.plot_score & (len(self.score)!=0):
+                img=mpimg.imread(self.score)
+                score = plt.subplot(2,1,1)
+                plt.axis('off')
+                score.imshow(img)
+                p = 1
+            else: p=0
 
-            plt.subplot(3, 1, 2, sharex=ax1)
-            if not self.Onset_given:
-                plt.plot(self.times, self.Dev, label='Deviation')
-                plt.plot(self.times, self.Seuil, color='g', label='Seuil')
-                plt.vlines(self.times[self.onset_frames[1:len(self.onset_frames)-1]], 0, self.Dev.max(), color='r', alpha=0.9, linestyle='--', label='Onsets')
-            else:
-                plt.vlines(self.times[self.onset_frames], 0, 1, color='r', alpha=0.9, linestyle='--', label='Onsets')
+            ax = plt.subplot(p+1,1,p+1)
 
+            img = librosa.display.specshow(self.chromSyncDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times_graph, cmap=cmap)
+            # img = librosa.display.specshow(librosa.amplitude_to_db(self.Chrom, ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times_graph, cmap=cmap)
+            # plt.title('Synchronised spectrum, β = {}, delay τ = {} s'.format(params.margin, T_att))
+            plt.title('Synchronised spectrum'.format(params.margin))
+            for t in self.onset_times_graph:
+                ax.axvline(t, color = 'k',alpha=0.5, ls='--')
             plt.axis('tight')
-            plt.legend(frameon=True, framealpha=0.75)
-
-            plt.subplot(3, 1, 3, sharex=ax1)
-            librosa.display.specshow(self.chromSyncDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times, cmap=cmap)
+            ax.get_xaxis().set_visible(False)
             plt.tight_layout()
+            plt.show()
+
+            # plt.figure(1,figsize=(13, 7))
+            # ax1 = plt.subplot(3, 1, 1)
+            # librosa.display.specshow(self.ChromDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.times,cmap=cmap)
+            # plt.title('CQT spectrogram')
+            #
+            # plt.subplot(3, 1, 2, sharex=ax1)
+            # if not self.Onset_given:
+            #     plt.plot(self.times, self.Dev, label='Deviation')
+            #     plt.plot(self.times, self.Seuil, color='g', label='Seuil')
+            #     plt.vlines(self.times[self.onset_frames[1:len(self.onset_frames)-1]], 0, self.Dev.max(), color='r', alpha=0.9, linestyle='--', label='Onsets')
+            # else:
+            #     plt.vlines(self.times[self.onset_frames], 0, 1, color='r', alpha=0.9, linestyle='--', label='Onsets')
+            #
+            # plt.axis('tight')
+            # plt.legend(frameon=True, framealpha=0.75)
+            #
+            # plt.subplot(3, 1, 3, sharex=ax1)
+            # librosa.display.specshow(self.chromSyncDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times_graph, cmap=cmap)
+            # plt.tight_layout()
 
         #Plot de la décomposition en partie harmonique / partie percussive
         if params.plot_decompo_hpss & params.decompo_hpss:
@@ -941,12 +1005,12 @@ class SignalSepare:
 
         #Plot des pistes
         if params.plot_pistes:
-            plt.figure(3,figsize=(13, 7))
+            plt.figure(3,figsize=(13, 7.5))
             ax1 = plt.subplot(self.n_pistes,1,1)
-            librosa.display.specshow(librosa.amplitude_to_db(self.chromPistesSync[0], ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.onset_times,cmap=cmap)
+            librosa.display.specshow(librosa.amplitude_to_db(self.chromPistesSyncSimpl[0], ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.onset_times_graph,cmap=cmap)
             for k in range(1, self.n_pistes):
                 plt.subplot(self.n_pistes, 1, k+1, sharex=ax1)
-                librosa.display.specshow(librosa.amplitude_to_db(self.chromPistesSync[k], ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.onset_times,cmap=cmap)
+                librosa.display.specshow(librosa.amplitude_to_db(self.chromPistesSyncSimpl[k], ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.onset_times_graph,cmap=cmap)
             plt.tight_layout()
 
         #Plot du contexte
@@ -956,37 +1020,51 @@ class SignalSepare:
 
             plt.figure(8,figsize=(13, 7))
             plt.subplot(3, 1, 1)
-            librosa.display.specshow(self.chromSyncDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times, cmap=cmap)
+            librosa.display.specshow(self.chromSyncDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times_graph, cmap=cmap)
             plt.title('Synchronised cqt spectrum')
 
             plt.subplot(3, 1, 2)
-            librosa.display.specshow(librosa.amplitude_to_db(self.context,ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times,cmap=cmap)
+            librosa.display.specshow(librosa.amplitude_to_db(self.context,ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times_graph,cmap=cmap)
             if isinstance(params.memory_size, str): title1 = 'Harmonic Context, cumulative memory'
             else : title1 = 'Harmonic Context, memory of {} chords'.format(int(params.memory_size))
             plt.title(title1)
 
             plt.subplot(3, 1, 3)
-            librosa.display.specshow(librosa.amplitude_to_db(self.chrom_harmonicNovelty,ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times,cmap=cmap)
+            librosa.display.specshow(librosa.amplitude_to_db(self.chrom_harmonicNovelty,ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times_graph,cmap=cmap)
             if isinstance(params.memory_size, str): title2 = 'Harmonic Novelties, cumulative memory'
             else : title2 = 'Harmonic Novelties, memory of {} chords'.format(int(params.memory_size))
             plt.title(title2)
             plt.tight_layout()
 
         #Plot des spectres simplifiés
-        if params.plot_partiels:
-            plt.figure(4,figsize=(13, 7))
-            ax1 = plt.subplot(3,1,1)
-            librosa.display.specshow(self.ChromDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.times, cmap=cmap)
-            plt.title('CQT spectrogram')
+        if params.plot_simple:
+            # plt.figure(4,figsize=(13, 7.5))
+            ########
+            # ax1 = plt.subplot(2,1,1)
+            # # librosa.display.specshow(self.ChromDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.times, cmap=cmap)
+            # # plt.title('CQT spectrogram')
+            #
+            # # plt.subplot(2, 1, 1, sharex=ax1)
+            # librosa.display.specshow(librosa.amplitude_to_db(self.chromSync, ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times_graph, cmap=cmap)
+            # plt.title('Spectre syncronisé')
+            #
+            # plt.subplot(2, 1, 2, sharex=ax1)
+            # librosa.display.specshow(librosa.amplitude_to_db(self.chromSyncSimpl, ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.onset_times_graph, cmap=cmap)
+            # plt.title('Simplifié')
+            # plt.tight_layout()
 
-            plt.subplot(3, 1, 2, sharex=ax1)
-            librosa.display.specshow(librosa.amplitude_to_db(self.chromSync, ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times, cmap=cmap)
-            plt.title('Spectre syncronisé')
-
-            plt.subplot(3, 1, 3, sharex=ax1)
-            librosa.display.specshow(librosa.amplitude_to_db(self.chromSyncSimpl, ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.onset_times, cmap=cmap)
-            plt.title('Partiels')
+            ######
+            # librosa.display.specshow(librosa.amplitude_to_db(self.chromSyncSimpl, ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.onset_times_graph, cmap=cmap)
+            ######
+            fig, ax = plt.subplots(figsize=(13, 7.5))
+            img = librosa.display.specshow(librosa.amplitude_to_db(self.chromSyncSimpl, ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times_graph, cmap=cmap)
+            # plt.title('Synchronised spectrum, β = {}, delay τ = {} s'.format(params.margin, T_att))
+            plt.title('Partial detection on synchronised spectrum, β = {}, with delay, δ = {}'.format(params.margin, params.δ))
+            for t in self.onset_times_graph:
+                ax.axvline(t, color = 'k',alpha=0.5, ls='--')
+            plt.axis('tight')
             plt.tight_layout()
+            plt.show()
 
         #Plot les spectrogrammes
         if params.plot_chromDescr:
@@ -998,10 +1076,10 @@ class SignalSepare:
 
 
             dimChrom = len(space)
-            times_plotChromDyn = [self.onset_times[0]] + [t-0.25 for t in self.onset_times[2:self.n_frames-1]] + [t+0.25 for t in self.onset_times[2:self.n_frames-1]] + [self.onset_times[self.n_frames]]
+            times_plotChromDyn = [self.onset_times_graph[0]] + [t-0.25 for t in self.onset_times_graph[2:self.n_frames-1]] + [t+0.25 for t in self.onset_times_graph[2:self.n_frames-1]] + [self.onset_times_graph[self.n_frames]]
             times_plotChromDyn.sort()
 
-            plt.figure(5,figsize=(13, 7))
+            plt.figure(5,figsize=(13, 7.5))
             # Partition
             if params.plot_score & (len(self.score)!=0):
                 #plt.subplot(dim+1+s,1,s)
@@ -1024,9 +1102,9 @@ class SignalSepare:
                     # Descripteurs statiques
                 if len(getattr(self, descr)) == self.n_frames:
                     if descr in ['roughness']:
-                        librosa.display.specshow(getattr(self, 'chrom_'+descr), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.onset_times, cmap=cmap)
+                        librosa.display.specshow(getattr(self, 'chrom_'+descr), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.onset_times_graph, cmap=cmap)
                     else:
-                        librosa.display.specshow(librosa.amplitude_to_db(getattr(self, 'chrom_'+descr), ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.onset_times, cmap=cmap)
+                        librosa.display.specshow(librosa.amplitude_to_db(getattr(self, 'chrom_'+descr), ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.onset_times_graph, cmap=cmap)
 
                     # Descripteurs dynamiques
                 else:
@@ -1039,7 +1117,7 @@ class SignalSepare:
         #Plot les descripteurs harmoniques
         if params.plot_descr:
             dim = len(space)
-            plt.figure(6,figsize=(13, 7))
+            plt.figure(6,figsize=(13, 7.5))
 
             # Partition
             if params.plot_score & (len(self.score)!=0):
@@ -1048,24 +1126,31 @@ class SignalSepare:
                 score = plt.subplot(dim+1,1,1)
                 plt.axis('off')
                 score.imshow(img)
-                plt.title(title +' '+ instrument)
+                # plt.title(title +' '+ instrument)
 
             else:
                 ax1 = plt.subplot(dim+1,1,1)
                 librosa.display.specshow(self.ChromDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.times,cmap=cmap)
-                plt.title(title +' '+ instrument)
+                # plt.title(title +' '+ instrument)
 
             for k, descr in enumerate(space):
                 if (k==0) & params.plot_score & (len(self.score)!=0):
                     ax1 = plt.subplot(dim+1,1,2)
-                else: plt.subplot(dim+1, 1, k+2, sharex=ax1)
+                    ax1.get_xaxis().set_visible(False)
+                else:
+                    ax = plt.subplot(dim+1, 1, k+2, sharex=ax1)
+                    ax.get_xaxis().set_visible(False)
                 # Je remplace les valeurs nan par 0
                 for i,val in enumerate(getattr(self,descr)):
                     if np.isnan(val): getattr(self,descr)[i] = 0
 
-                plt.vlines(self.onset_times[1:self.n_frames], min(getattr(self, descr)), max(getattr(self, descr)[1:(self.n_frames-1)]), color='k', alpha=0.9, linestyle='--')
+                if len(getattr(self, descr)) == self.n_frames:
+                    plt.vlines(self.onset_times_graph[1:self.n_frames], min(getattr(self, descr)), max(getattr(self, descr)[1:(self.n_frames-1)]), color='k', alpha=0.9, linestyle='--')
+                else:
+                    plt.vlines(self.onset_times_graph[1:self.n_frames-1], min(getattr(self, descr)), max(getattr(self, descr)[1:(self.n_frames-1)]), color='k', alpha=0.9, linestyle='--')
+                plt.xlim(self.onset_times_graph[0],self.onset_times_graph[-1])
                 if not all(x>=0 for x in getattr(self, descr)[1:(self.n_frames-1)]):
-                    plt.hlines(0,self.onset_times[0], self.onset_times[self.n_frames], alpha=0.5, linestyle = ':')
+                    plt.hlines(0,self.onset_times_graph[0], self.onset_times_graph[self.n_frames], alpha=0.5, linestyle = ':')
 
                 # Legend
                 context = ''
@@ -1077,69 +1162,114 @@ class SignalSepare:
 
                 # Descripteurs statiques
                 if len(getattr(self, descr)) == self.n_frames:
-                    plt.hlines(getattr(self, descr)[1:(self.n_frames-1)], self.onset_times[1:(self.n_frames-1)], self.onset_times[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][k], label=descr[0].upper() + descr[1:] + norm + context)
+                    plt.hlines(getattr(self, descr)[1:(self.n_frames-1)], self.onset_times_graph[1:(self.n_frames-1)], self.onset_times_graph[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][k], label=descr[0].upper() + descr[1:] + norm + context)
+                    # if descr in ['concordance']:
+                    #     plt.hlines(getattr(self, descr)[2:(self.n_frames-1)], self.onset_times_graph[2:(self.n_frames-1)], self.onset_times_graph[3:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][k+3], label=descr[0].upper() + descr[1:] + norm + context)
+                    # elif descr == 'concordance3':
+                    #     plt.hlines(getattr(self, descr)[3:(self.n_frames-1)], self.onset_times_graph[3:(self.n_frames-1)], self.onset_times_graph[4:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][k+3], label=descr[0].upper() + descr[1:] + norm + context)
+                    # elif descr == 'concordanceTot':
+                    #     plt.hlines([1] + getattr(self, descr)[2:(self.n_frames-1)], self.onset_times_graph[1:(self.n_frames-1)], self.onset_times_graph[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][k+3], label=descr[0].upper() + descr[1:] + norm + context)
+                    # else:
+                    #     plt.hlines(getattr(self, descr)[1:(self.n_frames-1)], self.onset_times_graph[1:(self.n_frames-1)], self.onset_times_graph[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][k+4], label=descr[0].upper() + descr[1:] + norm + context)
                 # Descripteurs dynamiques
                 elif len(getattr(self, descr)) == (self.n_frames-1):
-                    plt.plot(self.onset_times[2:(self.n_frames-1)], getattr(self, descr)[1:(self.n_frames-2)],['b','r','g','c','m','y','b','r','g'][k]+'o', label=(descr[0].upper() + descr[1:]) + norm + context)
-                    plt.hlines(getattr(self, descr)[1:(self.n_frames-2)], [t-0.25 for t in self.onset_times[2:(self.n_frames-1)]], [t+0.25 for t in self.onset_times[2:(self.n_frames-1)]], color=['b','r','g','c','m','y','b','r','g'][k], alpha=0.9, linestyle=':'  )
+                    if descr == 'diffRoughnessContext': plt.plot(self.onset_times_graph[2:(self.n_frames-1)], getattr(self, descr)[1:(self.n_frames-2)],['b','r','g','c','m','y','b','r','g'][k]+'o', label='DiffRoughness' + norm)
+                    else: plt.plot(self.onset_times_graph[2:(self.n_frames-1)], getattr(self, descr)[1:(self.n_frames-2)],['b','r','g','c','m','y','b','r','g'][k]+'o', label=(descr[0].upper() + descr[1:]) + norm)
+                    plt.hlines(getattr(self, descr)[1:(self.n_frames-2)], [t-0.5 for t in self.onset_times_graph[2:(self.n_frames-1)]], [t+0.5 for t in self.onset_times_graph[2:(self.n_frames-1)]], color=['b','r','g','c','m','y','b','r','g'][k], alpha=0.9, linestyle=':'  )
+                    # plt.plot(self.onset_times_graph[2:(self.n_frames-1)], [0.35, 0.21, 0.34, 0.23],['b','r','g','c','m','y','b','r','g'][1]+'o', label = 'Octave up')#label=(descr[0].upper() + descr[1:]) + norm + context)
+                    # plt.hlines([0.35, 0.21, 0.34, 0.23], [t-0.5 for t in self.onset_times_graph[2:(self.n_frames-1)]], [t+0.5 for t in self.onset_times_graph[2:(self.n_frames-1)]], color=['b','r','g','c','m','y','b','r','g'][1], alpha=0.9, linestyle=':'  )
+                    # plt.hlines([0.61,0.47,0.59, 0.49], [t-0.5 for t in self.onset_times_graph[2:(self.n_frames-1)]], [t+0.5 for t in self.onset_times_graph[2:(self.n_frames-1)]], color=['b','r','g','c','m','y','b','r','g'][2], alpha=0.9, linestyle=':'  )
+                    # plt.plot(self.onset_times_graph[2:(self.n_frames-1)], [0.61,0.47,0.59, 0.49],['b','r','g','c','m','y','b','r','g'][2]+'o',label = 'Fourth down')#label=(descr[0].upper() + descr[1:]) + norm + context)
+
+                # plt.title('DiffRoughness, normalised')
                 plt.legend(frameon=True, framealpha=0.75)
 
             plt.tight_layout()
 
         #Plot descriptogramme + valeur numérique
         if params.plot_OneDescr:
+
             descr = space[0]
-            plt.figure(7,figsize=(13, 7))
+            plt.figure(7,figsize=(10, 7.5))
+
+            ############################
 
             # Partition
             if params.plot_score & (len(self.score)!=0):
-                #plt.subplot(dim+1+s,1,s)
                 img=mpimg.imread(self.score)
                 score = plt.subplot(3,1,1)
                 plt.axis('off')
                 score.imshow(img)
-                plt.title(title +' '+instrument)
+                p = 1
+            else: p=0
 
-            else:
-                ax1 = plt.subplot(3,1,1)
-                librosa.display.specshow(self.ChromDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.times,cmap=cmap)
-                plt.title(title +' '+instrument)
+            ax1 = plt.subplot(p+2,1,p+1)
 
-            # Plot Spectre Descr
-            if params.plot_score & (len(self.score)!=0):
-                ax1 = plt.subplot(3,1,2)
-            else: plt.subplot(3, 1, 2, sharex=ax1)
-
-                # Descripteurs statiques
+            # Descripteurs statiques
             if len(getattr(self, descr)) == self.n_frames:
-                if descr in ['roughness']:
-                    librosa.display.specshow(getattr(self, 'chrom_'+descr), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.onset_times, cmap=cmap)
+                if descr in ['concordanceTot', 'concordance3']:
+                    librosa.display.specshow(getattr(self, 'chrom_'+descr), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.onset_times_graph, cmap=cmap)
+                elif descr == 'harmonicity':
+                    librosa.display.specshow(np.power(getattr(self, 'chrom_'+descr),4)[0:4*BINS_PER_OCTAVE], bins_per_octave=BINS_PER_OCTAVE, fmin=f_corr_min, y_axis='cqt_note', x_axis='time', x_coords=self.onset_times_graph, cmap=cmap)
                 else:
-                    librosa.display.specshow(librosa.amplitude_to_db(getattr(self, 'chrom_'+descr), ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.onset_times, cmap=cmap)
+                    librosa.display.specshow(librosa.amplitude_to_db(getattr(self, 'chrom_'+descr)[0:int(5*self.n_bins/6),:], ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.onset_times_graph, cmap=cmap)
 
                 # Descripteurs dynamiques
             else:
-                times_plotChromDyn = [self.onset_times[0]] + [t-0.25 for t in self.onset_times[2:self.n_frames-1]] + [t+0.25 for t in self.onset_times[2:self.n_frames-1]] + [self.onset_times[self.n_frames]]
+                times_plotChromDyn = [self.onset_times_graph[0]] + [t-0.75 for t in self.onset_times_graph[2:self.n_frames-1]] + [t+0.75 for t in self.onset_times_graph[2:self.n_frames-1]] + [self.onset_times_graph[self.n_frames]]
                 times_plotChromDyn.sort()
                 Max  = np.amax(getattr(self, 'chrom_'+descr)[:,1:self.n_frames-2])
-                librosa.display.specshow(librosa.amplitude_to_db(np.insert(getattr(self, 'chrom_'+descr)[:,1:self.n_frames-2]/Max, range(self.n_frames-2),1, axis=1), ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=np.asarray(times_plotChromDyn),cmap=cmap)
-            plt.title('Spectre de ' + descr)
+                if descr == 'diffRoughnessContext':
+                    librosa.display.specshow(np.insert(getattr(self, 'chrom_'+descr)[:,1:self.n_frames-2]/Max, range(self.n_frames-2),1, axis=1), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=np.asarray(times_plotChromDyn),cmap=cmap)
+                else:
+                    librosa.display.specshow(librosa.amplitude_to_db(np.insert(getattr(self, 'chrom_'+descr)[:,1:self.n_frames-2]/Max, range(self.n_frames-2),1, axis=1), ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=np.asarray(times_plotChromDyn),cmap=cmap)
+
+            for t in self.onset_times_graph:
+                ax1.axvline(t, color = 'k',alpha=0.5, ls='--')
+            if descr == 'harmonicity':
+                plt.title('Virtual pitch spectrum')
+            else:
+                # plt.title('DiffRoughness Spectrum')
+                plt.title(descr[0].upper()+descr[1:]+' spectrum')
+            plt.xlim(self.onset_times_graph[0],self.onset_times_graph[-1])
+            ax1.get_xaxis().set_visible(False)
+
 
             # Plot Descr
-            plt.subplot(3, 1, 3, sharex=ax1)
-            plt.vlines(self.onset_times[1:self.n_frames], min(getattr(self, descr)), max(getattr(self, descr)), color='k', alpha=0.9, linestyle='--')
+            ax2 = plt.subplot(p+2, 1, p+2)
+            if len(getattr(self, descr)) == self.n_frames:
+                plt.vlines(self.onset_times_graph[1:self.n_frames], min(getattr(self, descr)), max(getattr(self, descr)), color='k', alpha=0.9, linestyle='--')
+            else:
+                plt.vlines(self.onset_times_graph[1:self.n_frames-1], min(getattr(self, descr)),max(getattr(self, descr)), color='k', alpha=0.9, linestyle='--')
             if not all(x>=0 for x in getattr(self, descr)):
-                plt.hlines(0,self.onset_times[0], self.onset_times[self.n_frames], alpha=0.5, linestyle = ':')
+                plt.hlines(0,self.onset_times_graph[0], self.onset_times_graph[self.n_frames], alpha=0.5, linestyle = ':')
+
+            # Legend
+            context = ''
+            norm = ''
+            par = ''
+            if params.plot_norm and (descr in params.dic_norm ): norm = '\n' + params.dic_norm[descr]
+            if descr in ['harmonicNovelty', 'harmonicityContext','roughnessContext','diffConcordanceContext','diffRoughnessContext'] :
+                if params.memory_size>=2: context = '\n' + 'Memory: {} chords, decr = {}'.format(params.memory_size, params.memory_decr_ponderation)
+                else: context = '\n' + 'Memory: {} chord'.format(params.memory_size)
+            if descr in ['harmonicity']:
+                par = '\n{} partials'.format(params.κ)
 
                 # Descripteurs statiques
             if len(getattr(self, descr)) == self.n_frames:
-                plt.hlines(getattr(self, descr)[1:(self.n_frames-1)], self.onset_times[1:(self.n_frames-1)], self.onset_times[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][1], label=descr)
+                plt.hlines(getattr(self, descr)[1:(self.n_frames-1)], self.onset_times_graph[1:(self.n_frames-1)], self.onset_times_graph[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][1], label= descr[0].upper() + descr[1:] + norm + context + par)
                 # Descripteurs dynamiques
             elif len(getattr(self, descr)) == (self.n_frames-1):
-                plt.plot(self.onset_times[2:(self.n_frames-1)], getattr(self, descr)[1:(self.n_frames-2)],['b','r','g','c','m','y','b','r','g'][1]+'o', label=descr)
-                plt.hlines(getattr(self, descr)[1:(self.n_frames-2)], [t-0.25 for t in self.onset_times[2:(self.n_frames-1)]], [t+0.25 for t in self.onset_times[2:(self.n_frames-1)]], color=['b','r','g','c','m','y','b','r','g'][0], alpha=0.9, linestyle=':')
+                plt.plot(self.onset_times_graph[2:(self.n_frames-1)], getattr(self, descr)[1:(self.n_frames-2)],['b','r','g','c','m','y','b','r','g'][0]+'o')
+                plt.hlines(getattr(self, descr)[1:(self.n_frames-2)], [t-0.5 for t in self.onset_times_graph[2:(self.n_frames-1)]], [t+0.5 for t in self.onset_times_graph[2:(self.n_frames-1)]], color=['b','r','g','c','m','y','b','r','g'][0], alpha=0.9, linestyle=':',label = descr[0].upper() + descr[1:] + norm + context)
+            plt.xlim(self.onset_times_graph[0],self.onset_times_graph[-1])
+            # plt.ylim(bottom=0)
+            ax2.get_xaxis().set_visible(False)
+            print(getattr(self, descr)[1:(self.n_frames-2)])
             plt.legend(frameon=True, framealpha=0.75)
             plt.tight_layout()
+
+
 
         #Plot représentations abstraites
         if params.plot_abstr:
@@ -1207,13 +1337,13 @@ class SignalSepare:
             plt.title(title +' '+instrument)
 
             plt.subplot(2, 1, 2)
-            plt.vlines(self.onset_times[1:self.n_frames], 0, 1, color='k', alpha=0.9, linestyle='--')
-            plt.hlines(nouv0[1:(self.n_frames-1)], self.onset_times[1:(self.n_frames-1)], self.onset_times[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][2], label='Memory: 0 chord')
-            # plt.hlines(nouv1[1:(self.n_frames-1)], self.onset_times[1:(self.n_frames-1)], self.onset_times[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][3], label='Memory: 1 chord')
-            # plt.hlines(nouv2[1:(self.n_frames-1)], self.onset_times[1:(self.n_frames-1)], self.onset_times[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][4], label='Memory: 2 chords')
-            plt.hlines(nouv3[1:(self.n_frames-1)], self.onset_times[1:(self.n_frames-1)], self.onset_times[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][5], label='Memory: 3 chords')
-            # plt.hlines(nouv4[1:(self.n_frames-1)], self.onset_times[1:(self.n_frames-1)], self.onset_times[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][6], label='Memory: 4 chords')
-            plt.hlines(nouvFull[1:(self.n_frames-1)], self.onset_times[1:(self.n_frames-1)], self.onset_times[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][1], label='Memory: All chords')
+            plt.vlines(self.onset_times_graph[1:self.n_frames], 0, 1, color='k', alpha=0.9, linestyle='--')
+            plt.hlines(nouv0[1:(self.n_frames-1)], self.onset_times_graph[1:(self.n_frames-1)], self.onset_times_graph[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][2], label='Memory: 0 chord')
+            # plt.hlines(nouv1[1:(self.n_frames-1)], self.onset_times_graph[1:(self.n_frames-1)], self.onset_times_graph[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][3], label='Memory: 1 chord')
+            # plt.hlines(nouv2[1:(self.n_frames-1)], self.onset_times_graph[1:(self.n_frames-1)], self.onset_times_graph[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][4], label='Memory: 2 chords')
+            plt.hlines(nouv3[1:(self.n_frames-1)], self.onset_times_graph[1:(self.n_frames-1)], self.onset_times_graph[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][5], label='Memory: 3 chords')
+            # plt.hlines(nouv4[1:(self.n_frames-1)], self.onset_times_graph[1:(self.n_frames-1)], self.onset_times_graph[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][6], label='Memory: 4 chords')
+            plt.hlines(nouvFull[1:(self.n_frames-1)], self.onset_times_graph[1:(self.n_frames-1)], self.onset_times_graph[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][1], label='Memory: All chords')
 
             plt.legend(frameon=True, framealpha=0.75)
             plt.tight_layout()
@@ -1265,11 +1395,11 @@ class SignalSepare:
 
             # Plot Descr
             plt.subplot(2, 1, 2)
-            plt.vlines(self.onset_times[1:self.n_frames], min(getattr(self, descr)), max(getattr(self, descr)), color='k', alpha=0.9, linestyle='--')
+            plt.vlines(self.onset_times_graph[1:self.n_frames], min(getattr(self, descr)), max(getattr(self, descr)), color='k', alpha=0.9, linestyle='--')
 
                 # Descripteurs statiques
             if len(getattr(self, descr)) == self.n_frames:
-                plt.hlines(L_sorted, self.onset_times[1:(self.n_frames-1)], self.onset_times[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][1], label=descr[0].upper() + descr[1:])
+                plt.hlines(L_sorted, self.onset_times_graph[1:(self.n_frames-1)], self.onset_times_graph[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][1], label=descr[0].upper() + descr[1:])
 
             plt.legend(frameon=True, framealpha=0.75)
             plt.show()
@@ -1341,7 +1471,7 @@ def Construction_Points(liste_timbres_or_scores, title, space, Notemin, Notemax,
 
             S.DetectionOnsets()
             S.Clustering()
-            if params.spectrRug_Simpl: S.SimplifySpectrum()
+            if params.simpl: S.SimplifySpectrum()
             # S.Context()
             S.ComputeDescripteurs(space = space)
 
@@ -1367,7 +1497,7 @@ def Construction_Points(liste_timbres_or_scores, title, space, Notemin, Notemax,
                 S = SignalSepare(y, sr, [y1,y2], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score = score,instrument = instrument)
             S.DetectionOnsets()
             S.Clustering()
-            if params.spectrRug_Simpl: S.SimplifySpectrum()
+            if params.simpl: S.SimplifySpectrum()
             # S.Context()
             S.ComputeDescripteurs(space = space)
 
@@ -1393,7 +1523,7 @@ def Construction_Points(liste_timbres_or_scores, title, space, Notemin, Notemax,
                 S = SignalSepare(y, sr, [y1,y2], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score = score,instrument = instrument)
             S.DetectionOnsets()
             S.Clustering()
-            if params.spectrRug_Simpl: S.SimplifySpectrum()
+            if params.simpl: S.SimplifySpectrum()
             # S.Context()
             S.ComputeDescripteurs(space = space)
 
@@ -1482,7 +1612,7 @@ def Clustered(Points, spacePlot, space, type_Temporal = type_Temporal):
 
 
 # Visualisation
-def Visualize(Points, descr, space, liste_timbres_or_scores, dic, type_Temporal = type_Temporal, type = 'abstract', simultaneity = False, score = None, onset_times = None):
+def Visualize(Points, descr, space, liste_timbres_or_scores, dic, type_Temporal = type_Temporal, type = 'abstract', simultaneity = False, score = None, onset_times = None, onset_times_graph = None):
     # Liste des descripteurs de context
     liste_descrContext = ['energyContext','harmonicChange','harmonicNovelty', 'harmonicityContext','roughnessContext','diffConcordanceContext','diffRoughnessContext']
 
@@ -1613,7 +1743,6 @@ def Visualize(Points, descr, space, liste_timbres_or_scores, dic, type_Temporal 
 
     elif type == 'temporal':
 
-
         # Construction de onset_times régulièrement espacé
         if onset_times is None:
             onset_times = [0.]
@@ -1627,7 +1756,8 @@ def Visualize(Points, descr, space, liste_timbres_or_scores, dic, type_Temporal 
         if simultaneity:
             m = len(descr)
             sc = 0
-            plt.figure(1,figsize=(13, 7))
+            plt.figure(2,figsize=(13, 7))
+
             # Plot Score
             if score:
                 sc = 1
@@ -1640,13 +1770,14 @@ def Visualize(Points, descr, space, liste_timbres_or_scores, dic, type_Temporal 
             for i, des in enumerate(descr):
                 dim = space.index(des)
                 ax = plt.subplot(m+sc,1,sc+1+i)
+                plt.xlim(onset_times_graph[0],onset_times_graph[-1])
                 norm = ''
-                if params.plot_norm and (des in params.dic_norm ): norm = '\n' + params.dic_norm[des]
+                if params.plot_norm and (des in params.dic_norm ): norm = ', ' + params.dic_norm[des]
                 ax.set_title(des[0].upper() + des[1:] + norm)
 
 
 
-                plt.vlines(onset_times[1:n_frames], 0.0, np.max(Points[:,dim]), color='k', alpha=0.9, linestyle='--')
+                plt.vlines(onset_times_graph[1:n_frames], 0.0, np.max(Points[:,dim]), color='k', alpha=0.9, linestyle='--')
                 for j, track in enumerate(liste_timbres_or_scores):
                     # Legend
                     context = ''
@@ -1663,17 +1794,18 @@ def Visualize(Points, descr, space, liste_timbres_or_scores, dic, type_Temporal 
 
                     # Descripteurs statiques
                     if len(Points[j,dim]) == n_frames-2:
-                        plt.hlines(Points[j,dim].tolist(), onset_times[1:(n_frames-1)], onset_times[2:n_frames], color=['b','r','g','c','m','y','b','r','g'][j], label=track_print + context)
+                        plt.hlines(Points[j,dim].tolist(), onset_times_graph[1:(n_frames-1)], onset_times_graph[2:n_frames], color=['b','r','g','c','m','y','b','r','g'][j], label=track_print + context)
                     # Descripteurs dynamiques
                     elif len(Points[j,dim]) == n_frames-3:
-                        plt.plot(onset_times[2:(n_frames-1)], Points[j,dim],['b','r','g','c','m','y','b','r','g'][j]+'o', label= track_print + context)
-                        plt.hlines(Points[j,dim], [t-0.25 for t in onset_times[2:(n_frames-1)]], [t+0.25 for t in onset_times[2:(n_frames-1)]], color=['b','r','g','c','m','y','b','r','g'][j], alpha=0.9, linestyle=':'  )
+                        print('ok')
+                        plt.plot(onset_times_graph[2:(n_frames-1)], Points[j,dim],['b','r','g','c','m','y','b','r','g'][j]+'o', label= track_print + context)
+                        plt.hlines(Points[j,dim], [t-0.25 for t in onset_times_graph[2:(n_frames-1)]], [t+0.25 for t in onset_times_graph[2:(n_frames-1)]], color=['b','r','g','c','m','y','b','r','g'][j], alpha=0.9, linestyle=':'  )
                     plt.legend(frameon=True, framealpha=0.75)
 
         else:
             m = len(liste_timbres_or_scores) * len(descr)
             sc = 0
-            plt.figure(1,figsize=(13, 7))
+            plt.figure(3,figsize=(13, 7))
             # Plot Score
             if score:
                 sc = 1
@@ -1687,9 +1819,10 @@ def Visualize(Points, descr, space, liste_timbres_or_scores, dic, type_Temporal 
                 dim = space.index(des)
                 for j, track in enumerate(liste_timbres_or_scores):
                     if i+j == 0: ax1 = plt.subplot(m+sc,1,sc+1)
-                    else: plt.subplot(m+sc,1,i*len(liste_timbres_or_scores)+j+1+sc, sharex=ax1)
+                    else: plt.subplot(m+sc,1,i*len(liste_timbres_or_scores)+j+1+sc)
 
-                    plt.vlines(onset_times[1:n_frames], 0.0, max(Points[j,dim]), color='k', alpha=0.9, linestyle='--')
+
+                    plt.vlines(onset_times_graph[1:n_frames], 0.0, max(Points[j,dim]), color='k', alpha=0.9, linestyle='--')
 
                     # Legend
                     context = ''
@@ -1708,12 +1841,13 @@ def Visualize(Points, descr, space, liste_timbres_or_scores, dic, type_Temporal 
 
                     # Descripteurs statiques
                     if len(Points[j,dim]) == n_frames-2:
-                        plt.hlines(Points[j,dim].tolist(), onset_times[1:(n_frames-1)], onset_times[2:n_frames], color=['b','r','g','c','m','y','b','r','g'][i], label=track_print + des[0].upper() + des[1:] + norm + context)
+                        plt.hlines(Points[j,dim].tolist(), onset_times_graph[1:(n_frames-1)], onset_times_graph[2:n_frames], color=['b','r','g','c','m','y','b','r','g'][i], label=track_print + des[0].upper() + des[1:] + norm + context)
                     # Descripteurs dynamiques
                     elif len(Points[j,dim]) == n_frames-3:
-                        plt.plot(onset_times[2:(n_frames-1)], Points[j,dim],['b','r','g','c','m','y','b','r','g'][i]+'o', label=(track_print + des[0].upper() + des[1:]) + norm + context)
-                        plt.hlines(Points[j,dim], [t-0.25 for t in onset_times[2:(n_frames-1)]], [t+0.25 for t in onset_times[2:(n_frames-1)]], color=['b','r','g','c','m','y','b','r','g'][i], alpha=0.9, linestyle=':'  )
+                        plt.plot(onset_times_graph[2:(n_frames-1)], Points[j,dim],['b','r','g','c','m','y','b','r','g'][i]+'o', label=(track_print + des[0].upper() + des[1:]) + norm + context)
+                        plt.hlines(Points[j,dim], [t-0.25 for t in onset_times_graph[2:(n_frames-1)]], [t+0.25 for t in onset_times_graph[2:(n_frames-1)]], color=['b','r','g','c','m','y','b','r','g'][i], alpha=0.9, linestyle=':'  )
                     plt.legend(frameon=True, framealpha=0.75)
+                    plt.xlim(onset_times_graph[0],onset_times_graph[-1])
 
         plt.tight_layout()
         plt.show()
@@ -1734,8 +1868,8 @@ spaceDyn = spaceDyn_NoCtx + spaceDyn_Ctx
 if params.one_track:
 
     # CHARGEMENT DES SONS ET DE LA PARTITION
-    title = 'Schnittke_Cor_T2'
-    instrument = 'Tutti'
+    title = 'Fratres'
+    instrument = 'Organ'
     if title in params.dic_duration:
         duration = params.dic_duration[title] # en secondes
     else : duration = 26.0 # en secondes
@@ -1749,16 +1883,18 @@ if params.one_track:
         y1, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Soprano.wav', duration = duration)
         y2, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Alto.wav', duration = duration)
         y3, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Tenor.wav', duration = duration)
-        y4, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Basse.wav', duration = duration)
+        y4, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Bass.wav', duration = duration)
+        y5, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-Baryton.wav', duration = duration)
     elif distribution == 'themeAcc':
         y1, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-theme.wav', duration = duration)
         y2, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/'+title+'-acc.wav', duration = duration)
+
 
     if title in params.dic_noteMin:
         Notemin = params.dic_noteMin[title]
     else: Notemin = 'G3'
 
-    Notemax = 'E9'
+    Notemax = 'D9'
     # score = '/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/EssaiNuances-score.png'
     if os.path.exists('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/'+title+'-score.png'):
         score = '/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/'+title+'-score.png'
@@ -1769,14 +1905,7 @@ if params.one_track:
     # DETECTION D'ONSETS
     delOnsets = []
     addOnsets = []
-    if params.SemiManual:
-        delOnsets = getattr(params, 'delOnsets'+'_'+title)
-        addOnsets = getattr(params, 'addOnsets'+'_'+title)
-        α = getattr(params, 'paramsDetOnsets'+'_'+title)[0]
-        ω = getattr(params, 'paramsDetOnsets'+'_'+title)[1]
-        H = getattr(params, 'paramsDetOnsets'+'_'+title)[2]
-        T = getattr(params, 'paramsDetOnsets'+'_'+title)[3]
-        T_att = getattr(params, 'paramsDetOnsets'+'_'+title)[4]
+
 
     # Chargement de onset_frames
     def OpenFrames(title):
@@ -1807,14 +1936,14 @@ if params.one_track:
         # for i,time in enumerate(onset_frames)
         return onset_frames
 
+    # onset_frames = OpenFrames('Cadence_M3_NoDelay')
     onset_frames = OpenFrames(title)
-    onset_frames = OpenFrames('Schnittke_Cor_T2')
 
     # CRÉATION DE L'INSTANCE DE CLASSE
     if distribution == 'record':
         S = SignalSepare(y, sr, [], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score, instrument)
     elif distribution == 'voix':
-        S = SignalSepare(y, sr, [y1,y2,y3,y4], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score, instrument)
+        S = SignalSepare(y, sr, [y1,y2,y3,y4,y5], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score, instrument)
     elif distribution == 'themeAcc':
         S = SignalSepare(y, sr, [y1,y2], Notemin, Notemax,onset_frames, delOnsets, addOnsets, score, instrument)
 
@@ -1823,12 +1952,18 @@ if params.one_track:
     #      pickle.dump(S.onset_frames, g)
     S.Clustering()
 
-    if params.spectrRug_Simpl: S.SimplifySpectrum()
+
 
     if not params.Matrix and not params.compare_contexts:
-        space = ['concordance']
+        space = ['concordance','roughness','harmonicity']#['energy','tension','roughness','harmonicity']#['energy','concordance','concordance3','concordanceTot']#
+        # space = ['harmonicChange', 'diffConcordance','diffRoughnessContext']
+        #'energy','harmonicity', 'roughness', 'concordance'
         S.Context()
+        if params.simpl: S.SimplifySpectrum()
         S.ComputeDescripteurs(space = space)
+        # S.energy[-2] = S.energy[-3]
+        # S.roughness[-2] = S.roughness[-3]
+        # S.harmonicity[-2] = S.harmonicity[-3]
         # print(S.activation[:,1:-1])
         S.Affichage(space = space, end = duration)
 
@@ -1843,16 +1978,16 @@ if params.one_track:
 
 
     elif params.compare_contexts:
-        list_context = [('mean', 0, 1),('mean',2,1),('mean',2,0)]
+        list_context = [('mean', 1, 1),('mean',2,1),('mean',3,1)]
         dic_context = {list_context[i]:i+1 for i in range(len(list_context))}
         dic_context[('mean', 0, 1)] = 0
 
 
-        space = ['diffRoughnessContext']
+        space = ['diffConcordanceContext']
         # Construction Matrice Points
         Points = []
         for ctx in list_context:
-            S.Context(type = ctx[0], size = ctx[1], decr = ctx[2])
+            S.Context(type = ctx[0], size = ctx[1]-1, decr = ctx[2])
             S.ComputeDescripteurs(space = space)
             Points.append(S.Points(space))
 
@@ -1860,7 +1995,7 @@ if params.one_track:
         print(Points.shape)
         # Points = Normalise(Points, list_context, dic_context)
         spacePlot = space
-        Visualize(Points, spacePlot, space, list_context, dic_context, type='temporal', simultaneity = False, score = S.score, onset_times = S.onset_times)
+        Visualize(Points, spacePlot, space, list_context, dic_context, type='temporal', simultaneity = True, score = S.score, onset_times = S.onset_times,onset_times_graph = [0,2.5,5,6,6.6,7.3,7.9,9.2,10.8,12.1,12.8,13.5,14.1,14.9,15.5,16.6,17.6,19.3,20])
 
     elif params.Matrix:
         liste = ['Brd + Chem']
@@ -1897,13 +2032,13 @@ if params.compare_instruments:
     # Construction_Points(liste_timbres, title, space, Notemin, Notemax, dic_timbres,filename = 'Points_Timbres_Dyn.npy', name_OpenFrames = 'Cadence_M', duration = duration)
 
     Points = np.load('Points_Timbres_CadM_Stat.npy')
-    # liste_timbres = ['Flûte4', 'Flûte2', 'Octave2','Bourdon8', 'Cheminée8']#, 'Flûte4', 'Flûte2', 'Octave2']
+    liste_timbres = ['Brd + Fl4']
     Points = Normalise(Points, liste_timbres, dic_timbres)
     Disp, Disp_by_descr,Disp_by_time = Dispersion(Points)
     Inertie_tot, Inertie_inter = Inerties(Points)
     descr_sorted, disp_sorted = MinimizeDispersion(Disp_by_descr, space)
     descrs_max_sep = MaximizeSeparation(Inertie_tot, Inertie_inter, space)
-    spacePlot = ['harmonicity', 'concordanceTot']
+    spacePlot = ['harmonicity', 'concordance']
     # spacePlot = descr_sorted[0:2]
     # spacePlot = descrs_max_sep
 

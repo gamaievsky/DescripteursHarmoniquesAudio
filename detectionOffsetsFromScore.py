@@ -3,13 +3,13 @@ import numpy as np
 
 from music21 import *
 
-title = 'EssaiUnisson'
+title = 'Fratres'
 score = converter.parse('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/'+title+'.musicxml')
 Tree = tree.fromStream.asTimespans(score, flatten=True,classList=(note.Note, chord.Chord))
 
 offsets = []
 tempo_noire = 40.0
-delay = 0.07
+delay = 0.03
 
 for verticality in Tree.iterateVerticalities():
     # Test si la verticalité est en fait le prolongement lié de la précédente, auquel cas on ne tient pas compte de la verticalité
@@ -29,4 +29,5 @@ for verticality in Tree.iterateVerticalities():
 # print(offsets)
 
 with open('Onset_given_'+title+'_score', 'wb') as fp:
+# with open('Onset_given_Cadeence_M3_NoDelay_score', 'wb') as fp:
     pickle.dump(offsets, fp)
