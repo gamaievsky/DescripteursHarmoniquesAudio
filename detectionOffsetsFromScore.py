@@ -3,12 +3,12 @@ import numpy as np
 
 from music21 import *
 
-title = 'Fratres'
+title = 'Herzlich1_1_bis'
 score = converter.parse('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/'+title+'.musicxml')
 Tree = tree.fromStream.asTimespans(score, flatten=True,classList=(note.Note, chord.Chord))
 
 offsets = []
-tempo_noire = 40.0
+tempo_noire = 20.0
 delay = 0.03
 
 for verticality in Tree.iterateVerticalities():

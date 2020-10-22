@@ -2,27 +2,32 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 
-one_track = True
+one_track = False
 Matrix = False
 test_stability = False
 compare_contexts = False
+
+compare = True
 compare_instruments = False
 compare_scores = False
 
 type_Temporal = 'static' #'static', 'differential'
 type_Normalisation = 'by timbre' #'by curve', 'by timbre'
 visualize_time_grouping = True
-visualize_trajectories = True
+visualize_trajectories = False
 
 correlation = False
 pca = False
 
 # Distribution des pistes :
-dic_distribution = {'EssaiNuances' : 'record','EssaiNuances2' : 'themeAcc' , 'EssaiNuances4' : 'voix', 'EssaiUnisson' : 'voix', 'EssaiUnissonInterv' : 'voix', 'Schnittke_Cor_Lent' : 'themeAcc', 'Schnittke_Cor': 'themeAcc', 'Schnittke_Cor_T2': 'themeAcc', 'Schnittke_Implor': 'themeAcc', 'Schnittke_Implor_T2': 'themeAcc','Schnittke_Implor_T2_Lent': 'themeAcc', 'Beethoven': 'voix','EssaiNuancesIndiv':'voix', '3Accords':'voix', 'Cadence_M3':'record', 'Crucis':'record', 'Tons':'record', '1Note':'record', 'Tenue':'record','Nuances':'voix','NuanceEnch':'voix','NuancesInd':'voix','Unisson':'voix','Cad':'voix','Fratres':'voix'}
+dic_distribution = {'EssaiNuances' : 'record','EssaiNuances2' : 'themeAcc' , 'EssaiNuances4' : 'voix', 'EssaiUnisson' : 'voix', 'EssaiUnissonInterv' : 'voix', 'Schnittke_Cor_Lent' : 'themeAcc', 'Schnittke_Cor': 'themeAcc', 'Schnittke_Cor_T2': 'themeAcc', 'Schnittke_Implor': 'themeAcc', 'Schnittke_Implor_T2': 'themeAcc','Schnittke_Implor_T2_Lent': 'themeAcc', 'Beethoven': 'voix','EssaiNuancesIndiv':'voix', '3Accords':'voix', 'Cadence_M3':'record', 'Crucis':'record', 'Tons':'record', '1Note':'record', 'Tenue':'record','Nuances':'voix','NuanceEnch':'voix','NuancesInd':'voix','Unisson':'voix','Cad':'voix','Fratres':'voix','Schnittke':'record', 'Schnittke2':'record', 'Fratres_1':'record','Herzlich1':'voix','Sheng':'record'}
 distribution = 'voix' # 'voix', 'themeAcc', 'record'
 
 # Xcoords pour fonction Affichage
-dic_xcoords =  {'3Accords':[0,2.3,6.3,10.6,14.2,14.6],'Crucis':[0.0,2.6,5.1,8,10.5,13.3,15.5,18.5], 'Tons':[0.0,2.1,2.9,3.7,4.5,5.3,6.1,6.9,7.7,8.9,9.7,10.5,11.7,12.8,13.6,14.2,15,16,16.8,17.5,18.3,19.6], '1Note':[0,2.9,7,9.5,10.2,10.9,11.5,13,14.7], 'Tenue':[0,2.1,4.5,7.2,9.4,11.3,12.2], 'Nuances':[0,1.9,4,6.1,8.2,10.4,12.5,14.7,16.8,18.6,19],'NuancesEnch':[0,2.5,5.5,8.3,11.3,14.1,17.1,19.4,20.3],'NuancesInd':[0,2.1,5.7,9.4,13,16.7,20,20.5], 'Unisson':[0,1.8,6.2,10.7,15.1,19.1,19.5], 'Cad':[0,2.6,6.0,9.4,12.9,16.4,19.5,20.3],'Schnittke_Cor_T2':[0,2.5,5,6,6.6,7.3,7.9,9.2,10.8,12.1,12.8,13.5,14.1,14.9,15.5,16.6,17.6,19.3,20], 'FratresCourt':[0,2.3,4.3,5.5,6.8,10,12,13.3,14.6,15.9,17.1,19.5,20], 'Fratres':[0,1.5,2.7,3.4,4.1,6.1,7.3,8,8.8,9.5,10.3,12.4,13.6,14.4,15.2,15.9,16.7,17.4,18.2,19.7,20]} #, 'Tenue':[0,3.4,7.3,11.7,15.3,18.5,19.3] [0,1.8,6.2,10.7,15.1,19.1,19.5]
+dic_xcoords =  {'3Accords':[0,2.3,6.3,10.6,14.2,14.6],'Crucis':[0.0,2.6,5.1,8,10.5,13.3,15.5,18.5], 'Tons':[0.0,2.1,2.9,3.7,4.5,5.3,6.1,6.9,7.7,8.9,9.7,10.5,11.7,12.8,13.6,14.2,15,16,16.8,17.5,18.3,19.6], '1Note':[0,2.9,7,9.5,10.2,10.9,11.5,13,14.7], 'Tenue':[0,2.1,4.5,7.2,9.4,11.3,12.2], 'Nuances':[0,1.9,4,6.1,8.2,10.4,12.5,14.7,16.8,18.6,19],'NuancesEnch':[0,2.5,5.5,8.3,11.3,14.1,17.1,19.4,20.3],'NuancesInd':[0,2.1,5.7,9.4,13,16.7,20,20.5], 'Unisson':[0,1.8,6.2,10.7,15.1,19.1,19.5], 'Cad':[0,2.6,6.0,9.4,12.9,16.4,19.5,20.3],'Schnittke_Cor_T2':[0,2.5,5,6,6.6,7.3,7.9,9.2,10.8,12.1,12.8,13.5,14.1,14.9,15.5,16.6,17.6,19.3,20], 'FratresCourt':[0,2.3,4.3,5.5,6.8,10,12,13.3,14.6,15.9,17.1,19.5,20], 'Fratres':[0,1.5,2.7,3.4,4.1,6.1,7.3,8,8.8,9.5,10.3,12.4,13.6,14.4,15.2,15.9,16.7,17.4,18.2,19.7,20], 'Fratres_1':[0,1.5,2.7,3.4,4.1,6.1,7.3,8,8.8,9.5,10.3,12.4,13.6,14.4,15.2,15.9,16.7,17.4,18.2,19.7,20],'Schnittke':[0,1.5,3.5,5.6,7.7,9.7,12.6,14.7,19.2], 'Schnittke2':[0,0.8,1.6,2.4,3.2,4.0,5.1,6.0,7.2,7.6,8.45,9.2,9.8,10.5,12.3,13.6,15.2,15.8,17.9,18.7,19.8,20.0], 'Herzlich1_1':[0,2.4,3.7,4.9,6.2,7.1,7.9,8.7,9.6,11,12.4,13.8,15.3,16.1,16.9,17.6,18.4,19.3,20,20.8,21.7,24.3,26.0], 'Herzlich1_2':[0,2.4,3.2,4.5,5.9,6.7,7.5,9.1,10.5,12,13.4,15.1,16,17,17.9,18.9,19.8,20.7,21.7,22.8,24.7,26], 'Herzlich1_3':[0,2.3,2.9,3.5,4.4,5.3,6.8,7.7,8.6,9.5,10.6,11.5,12.3,13.1,14,15.4,16.9,17.7,18.5,19.3,20,20.8,21.6,22.4,23.4,24.9,26],'Sheng':[0,1.5,3.4,5.3,7.2,9.0,10.7,12.6,14.3,16,17.9,19.6,21.3,21.8], 'Herzlich1_1_bis':[0,2.4,3.8,5.2,6.5,7.9,9.7,12.2,13.8,15.5,17.1,18.6,20.2,22,25,26.8]}
+
+# Annotation pour représenations abstraites
+dic_annot = {'Sheng':['kotsu','ichi','ku','bo','otsu','ge','ju','sojo no ju','bi','gyo','hi']}
 
 #general load WAV
 begin = 0.0 #start reading the analysed signal after this time (in seconds)s
@@ -42,10 +47,10 @@ decompo_hpss = True
 margin = 20
 #Simplification du spectre
 simpl = True
-δ = 4 #int, en subdivisions spectrales
+δ = 2 #int, en subdivisions spectrales
 
-dic_duration = {'EssaiNuances' : 49.0,'EssaiNuances2' : 49.0 , 'EssaiNuances4' : 49.0, 'EssaiUnisson' : 26.0, 'EssaiUnissonInterv' : 20.0, 'Schnittke_Cor_Lent' : 368.0, 'Schnittke_Cor': 23.0, 'Schnittke_Cor_T2': 23.0, 'Schnittke_Implor': 48.0, 'Schnittke_Implor_T2': 48.0, 'Schnittke_Implor_T2_Lent': 96.0, 'Beethoven': 62.0,'EssaiNuancesIndiv':26.0, '3Accords':21.0, '3Accords_aigu':21.0,'Cadence_M3':9.0,'Crucis':11,'Tons':39.0,'1Note':9.0, 'Tenue':9.8,'Nuances':33.0,'NuancesEnch':25.0,'NuancesInd':21.0,'Unisson':25.0,'Cad':21.0,'Fratres':41.0}
-dic_noteMin = {'EssaiNuances' : 'D4','EssaiNuances2' : 'D4' , 'EssaiNuances4' : 'G3', 'EssaiUnisson' : 'D4', 'EssaiUnissonInterv' : 'A3', 'Schnittke_Cor_Lent' : 'A1', 'Schnittke_Cor': 'A1','Schnittke_Cor_T2': 'A1', 'Schnittke_Implor': 'A1', 'Schnittke_Implor_T2': 'A1', 'Schnittke_Implor_T2_Lent': 'A1', 'Beethoven': 'A1','EssaiNuancesIndiv':'A3','Cadence_M3':'G2','Crucis':'C2','Tons':'C2','1Note':'A2', 'Tenue':'G2','Nuances':'G3','NuancesEnch':'A2','NuancesInd':'G3', 'Unisson': 'A3','Cad':'C3', 'Fratres':'F3'}
+dic_duration = {'EssaiNuances' : 49.0,'EssaiNuances2' : 49.0 , 'EssaiNuances4' : 49.0, 'EssaiUnisson' : 26.0, 'EssaiUnissonInterv' : 20.0, 'Schnittke_Cor_Lent' : 368.0, 'Schnittke_Cor': 23.0, 'Schnittke_Cor_T2': 23.0, 'Schnittke_Implor': 48.0, 'Schnittke_Implor_T2': 48.0, 'Schnittke_Implor_T2_Lent': 96.0, 'Beethoven': 62.0,'EssaiNuancesIndiv':26.0, '3Accords':21.0, '3Accords_aigu':21.0,'Cadence_M3':9.0,'Crucis':11,'Tons':39.0,'1Note':9.0, 'Tenue':9.8,'Nuances':33.0,'NuancesEnch':25.0,'NuancesInd':21.0,'Unisson':25.0,'Cad':21.0,'Fratres':41.0,'Schnittke_Brunn_2': 57.0,'Schnittke_Smith_2': 58.0,'Schnittke_Yanchenko_2': 53.0, 'Fratres_Shaham_1': 26.0, 'Fratres_Jarvi_1': 26.0, 'Fratres_Rattle_1': 40.0, 'Herzlich1':49.0, 'Sheng': 67.0}
+dic_noteMin = {'EssaiNuances' : 'D4','EssaiNuances2' : 'D4' , 'EssaiNuances4' : 'G3', 'EssaiUnisson' : 'D4', 'EssaiUnissonInterv' : 'A3', 'Schnittke_Cor_Lent' : 'A1', 'Schnittke_Cor': 'A1','Schnittke_Cor_T2': 'A1', 'Schnittke_Implor': 'A1', 'Schnittke_Implor_T2': 'A1', 'Schnittke_Implor_T2_Lent': 'A1', 'Beethoven': 'A1','EssaiNuancesIndiv':'A3','Cadence_M3':'G2','Crucis':'C2','Tons':'C2','1Note':'A2', 'Tenue':'G2','Nuances':'G3','NuancesEnch':'A2','NuancesInd':'G3', 'Unisson': 'A3','Cad':'C3', 'Fratres':'F3','Schnittke': 'C1','Schnittke2': 'C1', 'Fratres_1':'D2', 'Herzlich1':'E2','Sheng':'F4'}
 #Matrice d'activation (quelles pistes sont à prendre en compte à quel moment ?)
 list_calcul_nombre_notes = ['EssaiUnisson', 'EssaiUnissonInterv','Schnittke_Cor','Schnittke_Cor_Lent','Schnittke_Cor_T2','Unisson']
 list_3_voix = ['EssaiNuancesIndiv']
@@ -103,16 +108,18 @@ if True:
 norm_conc = True  # True : normalisation par l'énergie
 norm_conc3 = True # True : normalisation par la norme 3
 norm_concTot = True # True : normalisation par la norme N, où N est le nombre de notes
-type_rug_signal = False
+type_rug_signal = True
 rug_simpl = True
 mod_rough = 'sethares' #'sethares', 'sethares + KK'
-norm_rug = False #True : normalisation par l'énergie si type_rug = 'produit', et la norme 1 sinon
+norm_rug = True #True : normalisation par l'énergie si type_rug = 'produit', et la norme 1 sinon
 norm_tension = True
 norm_harm = True
 norm_crossConc = False  #False : chrom_crossConcordance porte déjà la normalisation de la concordance, True : norm par la concordance
 norm_crossConcTot = False #False : chrom_crossConcordance porte déjà la normalisation de la concordanceTot, True : norm par la concordanceTot
 theme_diffConc = False
 norm_diffConc = True
+theme_diffRug = False
+norm_diffRug = True
 norm_harmonicity = 1 # La puissance dans le calcul de l'harmonicité. 1 : amplitude, 2 : énergie
 
 memory_size = 1 # "full", int # entier n>=1, auquel cas la mémoire ne dure que n accords
@@ -122,17 +129,17 @@ norm_Novelty = 'general' # 'None', 'frame_by_frame', 'general'
 type_Novelty = 'dyn' #'dyn', 'stat'
 type_harmChange = 'absolute' # 'absolute', 'relative'
 norm_harmChange = 'general' # 'None', 'frame_by_frame', 'general'
-norm_rugCtx = True
+norm_rugCtx = False
 theme_diffConcCtx = True
 norm_diffConcCtx = True # True : Normalisation par l'énergie des deux accords
 theme_diffRugCtx = False
 norm_diffRugCtx = True
 
 dic_test_norm = {'roughness': 1, 'roughnessSignal': 1, 'concordance' : 1, 'harmonicity' : 0}
-Norm = {'concordance':norm_conc, 'concordance3':norm_conc3, 'roughness':norm_rug, 'harmonicity':norm_harm, 'tension':norm_tension, 'roughnessSignal':norm_rug, 'concordanceTot':norm_concTot, 'harmonicChange':norm_harmChange, 'harmonicNovelty':norm_Novelty,'diffConcordance':norm_diffConc, 'diffConcordanceContext':norm_diffConcCtx,'crossConcordance':norm_crossConc, 'crossConcordanceTot':norm_crossConcTot, 'roughnessContext':norm_rugCtx, 'diffRoughnessContext':norm_diffRugCtx}
-Theme = {'diffConcordance':theme_diffConc, 'diffConcordanceContext':theme_diffConcCtx, 'diffRoughnessContext':theme_diffRugCtx}
+Norm = {'concordance':norm_conc, 'concordance3':norm_conc3, 'roughness':norm_rug, 'harmonicity':norm_harm, 'tension':norm_tension, 'roughnessSignal':norm_rug, 'concordanceTot':norm_concTot, 'harmonicChange':norm_harmChange, 'harmonicNovelty':norm_Novelty,'diffConcordance':norm_diffConc, 'diffRoughness':norm_diffRug, 'diffConcordanceContext':norm_diffConcCtx,'crossConcordance':norm_crossConc, 'crossConcordanceTot':norm_crossConcTot, 'roughnessContext':norm_rugCtx, 'diffRoughnessContext':norm_diffRugCtx}
+Theme = {'diffConcordance':theme_diffConc, 'diffRoughness':theme_diffRug, 'diffConcordanceContext':theme_diffConcCtx, 'diffRoughnessContext':theme_diffRugCtx}
 dic_norm = {}
-for descr in ['concordance', 'concordance3', 'concordanceTot', 'roughness', 'harmonicity','tension', 'roughnessSignal','roughnessContext','crossConcordance','crossConcordanceTot','diffConcordance','diffConcordanceContext', 'diffRoughnessContext']:
+for descr in ['concordance', 'concordance3', 'concordanceTot', 'roughness', 'harmonicity','tension', 'roughnessSignal','roughnessContext','crossConcordance','crossConcordanceTot','diffConcordance','diffRoughness','diffConcordanceContext', 'diffRoughnessContext']:
     type = ''
     if (descr in Theme) and Theme[descr]:
         type = ', Theme'

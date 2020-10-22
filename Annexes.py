@@ -18,7 +18,7 @@ print(2/(fc-f0))
 # Longueur de la fenêtre d'analyse
 import numpy as np
 
-f = 65
+f = 77.0
 sr = 22050
 N = 1.5 * sr / (f * (2**(1.0/(12*8)) - 1))
 print(N/sr)
