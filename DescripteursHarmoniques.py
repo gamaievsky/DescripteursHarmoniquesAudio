@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from numpy import linalg as LA
 from matplotlib.animation import FuncAnimation
+from matplotlib.ticker import FormatStrFormatter
 from mpl_toolkits.mplot3d import Axes3D
 from operator import itemgetter, attrgetter, truediv
 import statistics as stat
@@ -1017,48 +1018,48 @@ class SignalSepare:
 
 
         if params.plot_onsets:
-            fig, ax = plt.subplots(figsize=(13, 7))
-            # Partition
-            if params.plot_score & (len(self.score)!=0):
-                img=mpimg.imread(self.score)
-                score = plt.subplot(2,1,1)
-                plt.axis('off')
-                score.imshow(img)
-                p = 1
-            else: p=0
-
-            ax = plt.subplot(p+1,1,p+1)
-
-            img = librosa.display.specshow(self.chromSyncDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times_graph, cmap=cmap)
-            # img = librosa.display.specshow(librosa.amplitude_to_db(self.Chrom, ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times_graph, cmap=cmap)
-            # plt.title('Synchronised spectrum, β = {}, delay τ = {} s'.format(params.margin, T_att))
-            plt.title('Synchronised spectrum'.format(params.margin))
-            for t in self.onset_times_graph:
-                ax.axvline(t, color = 'k',alpha=0.5, ls='--')
-            plt.axis('tight')
-            ax.get_xaxis().set_visible(False)
-            plt.tight_layout()
-            # plt.show()
-
-            # plt.figure(1,figsize=(13, 7))
-            # ax1 = plt.subplot(3, 1, 1)
-            # librosa.display.specshow(self.ChromDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.times,cmap=cmap)
-            # plt.title('CQT spectrogram')
+            # fig, ax = plt.subplots(figsize=(13, 7))
+            # # Partition
+            # if params.plot_score & (len(self.score)!=0):
+            #     img=mpimg.imread(self.score)
+            #     score = plt.subplot(2,1,1)
+            #     plt.axis('off')
+            #     score.imshow(img)
+            #     p = 1
+            # else: p=0
             #
-            # plt.subplot(3, 1, 2, sharex=ax1)
-            # if not self.Onset_given:
-            #     plt.plot(self.times, self.Dev, label='Deviation')
-            #     plt.plot(self.times, self.Seuil, color='g', label='Seuil')
-            #     plt.vlines(self.times[self.onset_frames[1:len(self.onset_frames)-1]], 0, self.Dev.max(), color='r', alpha=0.9, linestyle='--', label='Onsets')
-            # else:
-            #     plt.vlines(self.times[self.onset_frames], 0, 1, color='r', alpha=0.9, linestyle='--', label='Onsets')
+            # ax = plt.subplot(p+1,1,p+1)
             #
+            # img = librosa.display.specshow(self.chromSyncDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times_graph, cmap=cmap)
+            # # img = librosa.display.specshow(librosa.amplitude_to_db(self.Chrom, ref=np.max), bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times_graph, cmap=cmap)
+            # # plt.title('Synchronised spectrum, β = {}, delay τ = {} s'.format(params.margin, T_att))
+            # plt.title('Synchronised spectrum'.format(params.margin))
+            # for t in self.onset_times_graph:
+            #     ax.axvline(t, color = 'k',alpha=0.5, ls='--')
             # plt.axis('tight')
-            # plt.legend(frameon=True, framealpha=0.75)
-            #
-            # plt.subplot(3, 1, 3, sharex=ax1)
-            # librosa.display.specshow(self.chromSyncDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times_graph, cmap=cmap)
+            # ax.get_xaxis().set_visible(False)
             # plt.tight_layout()
+
+
+            plt.figure(1,figsize=(13, 7))
+            ax1 = plt.subplot(3, 1, 1)
+            librosa.display.specshow(self.ChromDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time', x_coords=self.times,cmap=cmap)
+            plt.title('CQT spectrogram')
+
+            plt.subplot(3, 1, 2, sharex=ax1)
+            if not self.Onset_given:
+                plt.plot(self.times, self.Dev, label='Deviation')
+                plt.plot(self.times, self.Seuil, color='g', label='Seuil')
+                plt.vlines(self.times[self.onset_frames[1:len(self.onset_frames)-1]], 0, self.Dev.max(), color='r', alpha=0.9, linestyle='--', label='Onsets')
+            else:
+                plt.vlines(self.times[self.onset_frames], 0, 1, color='r', alpha=0.9, linestyle='--', label='Onsets')
+
+            plt.axis('tight')
+            plt.legend(frameon=True, framealpha=0.75)
+
+            plt.subplot(3, 1, 3, sharex=ax1)
+            librosa.display.specshow(self.chromSyncDB, bins_per_octave=BINS_PER_OCTAVE, fmin=self.fmin, y_axis='cqt_note', x_axis='time',x_coords=self.onset_times_graph, cmap=cmap)
+            plt.tight_layout()
 
         #Plot de la décomposition en partie harmonique / partie percussive
         if params.plot_decompo_hpss & params.decompo_hpss:
@@ -1238,7 +1239,7 @@ class SignalSepare:
 
                 # Descripteurs statiques
                 if len(getattr(self, descr)) == self.n_frames:
-                    plt.hlines(getattr(self, descr)[1:(self.n_frames-1)], self.onset_times_graph[1:(self.n_frames-1)], self.onset_times_graph[2:self.n_frames], color=['b','r','g','c','m','y','b','r','g'][k], label=descr[0].upper() + descr[1:] + norm + context)
+                    plt.hlines(getattr(self, descr)[1:(self.n_frames-1)], self.onset_times_graph[1:(self.n_frames-1)], self.onset_times_graph[2:self.n_frames],color=['b','r','g','c','m','y','b','r','g'][k] , label=descr[0].upper() + descr[1:] + norm + context)
                 # Descripteurs dynamiques
                 elif len(getattr(self, descr)) == (self.n_frames-1):
                     if descr == 'diffRoughnessContext': plt.plot(self.onset_times_graph[2:(self.n_frames-1)], getattr(self, descr)[1:(self.n_frames-2)],['b','r','g','c','m','y','b','r','g'][k]+'o', label='DiffRoughness' + norm)
@@ -1332,6 +1333,7 @@ class SignalSepare:
                 plt.hlines(getattr(self, descr)[1:(self.n_frames-2)], [t-0.5 for t in self.onset_times_graph[2:(self.n_frames-1)]], [t+0.5 for t in self.onset_times_graph[2:(self.n_frames-1)]], color=['b','r','g','c','m','y','b','r','g'][0], alpha=0.9, linestyle=':',label = descr[0].upper() + descr[1:] + norm + context)
             plt.xlim(self.onset_times_graph[0],self.onset_times_graph[-1])
             # plt.ylim(bottom=0)
+            ax2.yaxis.set_major_formatter(FormatStrFormatter('%.1e'))
             ax2.get_xaxis().set_visible(False)
             plt.legend(frameon=True, framealpha=0.75)
             plt.tight_layout()
@@ -2021,9 +2023,9 @@ spaceDyn = spaceDyn_NoCtx + spaceDyn_Ctx
 
 if params.one_track:
 
-    # CHARGEMENT DES SONS ET DE LA PARTITION
-    title = 'Herzlich1'
-    subTitle = 'Herzlich1_1'
+    # CHARGEMENT DES SONS ET DE LA PARTITIONs
+    title = 'Unison'
+    subTitle = 'Unisson'
     instrument = 'Organ'
     if title in params.dic_duration:
         duration = params.dic_duration[title] # en secondes
@@ -2112,7 +2114,7 @@ if params.one_track:
 
     if not params.Matrix and not params.compare_contexts:
         # space = ['energy', 'roughness','tension']#['energy','tension','roughness','harmonicity']#['energy','concordance','concordance3','concordanceTot']#
-        space = ['roughness']
+        space = ['tension']
         #'energy','harmonicity', 'roughness', 'concordance'
         S.Context()
         if params.simpl: S.SimplifySpectrum()

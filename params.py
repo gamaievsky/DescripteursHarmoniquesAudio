@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 
-one_track = False
+one_track = True
 Matrix = False
 test_stability = False
 compare_contexts = False
 
-compare = True
+compare = False
 compare_instruments = False
 compare_scores = False
 
@@ -183,7 +183,7 @@ link_abstr = True
 #PARAMETRES DES DESCRIPTEURS
 #Roughness
 β1 = 3.5
-β2 = 5.0
+β2 = 5.75
 P_ref = 20*(10**(-6))
 #Tension:
 δ_tension = 0.6

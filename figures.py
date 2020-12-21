@@ -13,17 +13,19 @@ fmin = librosa.note_to_hz(Notemin)
 fmax = librosa.note_to_hz(Notemax)
 cmap='gray_r'
 spectral_reloc = True
-hpss = True
+hpss = False
 margin = 20
 
 n_bins = int((librosa.note_to_midi(Notemax) - librosa.note_to_midi(Notemin))*BINS_PER_OCTAVE/12)
 WINDOW = np.hanning
 
 # y, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/Cadence_M3.wav', duration = 9)
-y, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/1NoteLent.wav', duration = 96)
-Chrom = np.abs(librosa.cqt(y, sr=sr, hop_length = STEP, fmin=fmin, bins_per_octave=BINS_PER_OCTAVE, n_bins=n_bins, window=WINDOW, filter_scale = FILTER_SCALE))
+# y, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/TimbreComparaison/Fichiers son/Cad.wav')
+y, sr = librosa.load('/Users/manuel/Dropbox (TMG)/Thèse/Cad_lent.wav')
+Chrom = np.abs(librosa.cqt(y, sr=sr, hop_length = STEP, fmin=fmin, bins_per_octave=BINS_PER_OCTAVE, n_bins=n_bins, window=WINDOW))
 Nt = len(Chrom[0])
 
+S = np.abs(librosa.stft(y))
 
 # Relocalisation
 if spectral_reloc:
@@ -49,8 +51,10 @@ if hpss:
 ######################################
 # Visualisation du spectre
 fig= plt.figure(figsize=(13, 7))
-img = librosa.display.specshow(librosa.amplitude_to_db(Chrom, ref=np.max),bins_per_octave=BINS_PER_OCTAVE, fmin=fmin, sr=sr, x_axis='time', y_axis='cqt_note', cmap = cmap)
-plt.title('Constant-Q power spectrum')
+# img = librosa.display.specshow(librosa.amplitude_to_db(Chrom, ref=np.max),bins_per_octave=BINS_PER_OCTAVE, fmin=fmin, sr=sr, x_axis='time', y_axis='cqt_note', cmap = cmap)
+img = librosa.display.specshow(librosa.amplitude_to_db(S,ref=np.max), y_axis='log', x_axis='time', cmap = cmap)
+# plt.title('Constant-Q power spectrum')
+plt.title('Fourier Transform')
 plt.axis('tight')
 plt.tight_layout()
 plt.show()
